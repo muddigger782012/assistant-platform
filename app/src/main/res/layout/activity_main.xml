@@ -139,6 +139,90 @@
         </ScrollView>
 
         <ScrollView
+            android:id="@+id/tabTerminalSection"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/terminal_tab_title"
+                    android:textStyle="bold" />
+
+                <EditText
+                    android:id="@+id/etTerminalCommand"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="@string/terminal_command_hint"
+                    android:inputType="text"
+                    android:minHeight="48dp" />
+
+                <Button
+                    android:id="@+id/btnTerminalRunCommand"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/terminal_run_command" />
+
+                <Button
+                    android:id="@+id/btnTerminalStopCommand"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/terminal_stop_command" />
+
+                <Button
+                    android:id="@+id/btnTerminalClearOutput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/terminal_clear_output" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/terminal_output_title"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvTerminalOutput"
+                    android:layout_width="match_parent"
+                    android:layout_height="200dp"
+                    android:layout_marginTop="8dp"
+                    android:background="#10000000"
+                    android:padding="8dp"
+                    android:textIsSelectable="true"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/terminal_history_title"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvTerminalHistory"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="#10000000"
+                    android:padding="8dp"
+                    android:textIsSelectable="true"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </ScrollView>
+
+        <ScrollView
             android:id="@+id/tabVoiceSection"
             android:layout_width="match_parent"
             android:layout_height="match_parent"

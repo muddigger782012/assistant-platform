@@ -45,6 +45,8 @@ import com.assistant.core.services.DhizukuStatus
 import com.assistant.core.services.FileService
 import com.assistant.core.services.LocalVoiceCommand
 import com.assistant.core.services.PrivilegeCatalogService
+import com.assistant.core.services.RunningShizukuCommand
+import com.assistant.core.services.ShizukuShellService
 import com.assistant.core.services.SystemService
 import com.assistant.core.services.VoiceAssistantService
 import com.assistant.core.services.VoiceCommandParser
@@ -59,20 +61,27 @@ import com.assistant.core.storage.ProjectRepository
 import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.tabs.TabLayout
 import com.rosan.dhizuku.api.Dhizuku
+import rikka.shizuku.Shizuku
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var commandInput: EditText
     private lateinit var shizukuCommandInput: EditText
+    private lateinit var terminalCommandInput: EditText
     private lateinit var outputLog: TextView
     private lateinit var statusOutput: TextView
     private lateinit var specialPermissionsStatus: TextView
+    private lateinit var terminalOutputView: TextView
+    private lateinit var terminalHistoryView: TextView
     private lateinit var micPermissionStatusView: TextView
     private lateinit var grantMicPermissionButton: Button
     private lateinit var privilegeCenterView: TextView
     private lateinit var refreshPrivilegesButton: Button
     private lateinit var requestDhizukuPermissionButton: Button
     private lateinit var applyCoreDelegatedScopesButton: Button
+    private lateinit var terminalRunButton: Button
+    private lateinit var terminalStopButton: Button
+    private lateinit var terminalClearButton: Button
 
     private lateinit var voiceButton: Button
     private lateinit var settingsButton: Button
@@ -109,10 +118,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var voiceCommandParser: VoiceCommandParser
     private lateinit var dhizukuService: DhizukuService
     private lateinit var privilegeCatalogService: PrivilegeCatalogService
+    private lateinit var shizukuShellService: ShizukuShellService
     private lateinit var currentVoiceConfig: VoiceConfig
     private lateinit var currentDhizukuStatus: DhizukuStatus
 
     private val outputLines = mutableListOf<String>()
+    private val terminalOutputLines = mutableListOf<String>()
+    private val terminalHistory = mutableListOf<String>()
     private val uiPreferences by lazy { getSharedPreferences("main_ui", MODE_PRIVATE) }
     private val devicePolicyManager by lazy {
         getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
@@ -122,6 +134,7 @@ class MainActivity : AppCompatActivity() {
     private var shouldStartVoiceAfterPermission = false
     private var receiverRegistered = false
     private var pendingClarification: String? = null
+    private var runningTerminalCommand: RunningShizukuCommand? = null
 
     private val voiceEventReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -183,6 +196,7 @@ class MainActivity : AppCompatActivity() {
         val shizukuAdapter = ShizukuAdapter(this)
         dhizukuService = DhizukuService()
         privilegeCatalogService = PrivilegeCatalogService()
+        shizukuShellService = ShizukuShellService(this)
         val dhizukuAdapter = DhizukuAdapter(this, dhizukuService)
         val specialAccessAdapter = SpecialAccessAdapter()
 
@@ -237,6 +251,7 @@ class MainActivity : AppCompatActivity() {
             findViewById(R.id.tabProjectSection),
             findViewById(R.id.tabShizukuSection),
             findViewById(R.id.tabStatusSection),
+            findViewById(R.id.tabTerminalSection),
             findViewById(R.id.tabVoiceSection),
             findViewById(R.id.tabPermissionsSection),
             findViewById(R.id.tabDhizukuSection)
@@ -244,15 +259,21 @@ class MainActivity : AppCompatActivity() {
 
         commandInput = findViewById(R.id.etCommandInput)
         shizukuCommandInput = findViewById(R.id.etShizukuCommand)
+        terminalCommandInput = findViewById(R.id.etTerminalCommand)
         outputLog = findViewById(R.id.tvOutputLog)
         statusOutput = findViewById(R.id.tvStatusOutput)
         specialPermissionsStatus = findViewById(R.id.tvSpecialPermissionsStatus)
+        terminalOutputView = findViewById(R.id.tvTerminalOutput)
+        terminalHistoryView = findViewById(R.id.tvTerminalHistory)
         micPermissionStatusView = findViewById(R.id.tvMicPermissionStatus)
         grantMicPermissionButton = findViewById(R.id.btnGrantMicPermission)
         privilegeCenterView = findViewById(R.id.tvPrivilegeCenter)
         refreshPrivilegesButton = findViewById(R.id.btnRefreshPrivileges)
         requestDhizukuPermissionButton = findViewById(R.id.btnRequestDhizukuPermission)
         applyCoreDelegatedScopesButton = findViewById(R.id.btnApplyCoreDelegatedScopes)
+        terminalRunButton = findViewById(R.id.btnTerminalRunCommand)
+        terminalStopButton = findViewById(R.id.btnTerminalStopCommand)
+        terminalClearButton = findViewById(R.id.btnTerminalClearOutput)
 
         voiceButton = findViewById(R.id.btnToggleVoice)
         settingsButton = findViewById(R.id.btnVoiceSettings)
@@ -283,6 +304,7 @@ class MainActivity : AppCompatActivity() {
             getString(R.string.tab_project),
             getString(R.string.tab_shizuku),
             getString(R.string.tab_status),
+            getString(R.string.tab_terminal),
             getString(R.string.tab_voice),
             getString(R.string.tab_permissions),
             getString(R.string.tab_dhizuku)
@@ -315,6 +337,14 @@ class MainActivity : AppCompatActivity() {
             val result = assistantEngine.executeAction(actionRegistry.runShellRequest(command = command, confirmed = true))
             appendActionResult(result)
             appendRecentAudit()
+        }
+
+        terminalRunButton.setOnClickListener { runTerminalCommand() }
+        terminalStopButton.setOnClickListener { stopTerminalCommand() }
+        terminalClearButton.setOnClickListener {
+            terminalOutputLines.clear()
+            terminalOutputView.text = ""
+            appendOutput("Terminal output cleared.")
         }
 
         findViewById<Button>(R.id.btnShowStatus).setOnClickListener {
@@ -392,6 +422,86 @@ class MainActivity : AppCompatActivity() {
     private fun appendOutput(text: String) {
         outputLines.add(text)
         outputLog.text = outputLines.joinToString(separator = "\n\n")
+    }
+
+    private fun appendTerminalOutput(line: String) {
+        terminalOutputLines.add(line)
+        terminalOutputView.text = terminalOutputLines.joinToString(separator = "\n")
+    }
+
+    private fun runTerminalCommand() {
+        if (runningTerminalCommand != null) {
+            appendTerminalOutput("[!] A command is already running. Stop it first.")
+            return
+        }
+        if (!isShizukuReadyForTerminal()) {
+            appendTerminalOutput("[!] Shizuku unavailable or permission not granted.")
+            return
+        }
+
+        val rawCommand = terminalCommandInput.text?.toString()?.trim().orEmpty().ifBlank { "id" }
+        val parsed = shizukuShellService.parseRishCommand(rawCommand)
+        if (parsed.interactiveOnly) {
+            val helper = shizukuShellService.ensureRishHelperFile().absolutePath
+            appendTerminalOutput("[!] Interactive .rish shell is not supported in this UI.")
+            appendTerminalOutput("[i] Use: .rish -c \"<command>\"")
+            appendTerminalOutput("[i] Helper file: $helper")
+            return
+        }
+
+        terminalHistory.add(0, rawCommand)
+        if (terminalHistory.size > 50) {
+            terminalHistory.removeAt(terminalHistory.lastIndex)
+        }
+        refreshTerminalHistory()
+        appendTerminalOutput("$ $rawCommand")
+
+        runningTerminalCommand = shizukuShellService.runStreaming(
+            parsed = parsed,
+            onStdout = { line -> runOnUiThread { appendTerminalOutput(line) } },
+            onStderr = { line -> runOnUiThread { appendTerminalOutput("[err] $line") } },
+            onCompleted = { exitCode, timedOut ->
+                runOnUiThread {
+                    appendTerminalOutput("[exit=$exitCode timedOut=$timedOut]")
+                    runningTerminalCommand = null
+                }
+            },
+            onError = { message ->
+                runOnUiThread {
+                    appendTerminalOutput("[error] $message")
+                    runningTerminalCommand = null
+                }
+            }
+        )
+    }
+
+    private fun stopTerminalCommand() {
+        val running = runningTerminalCommand
+        if (running == null) {
+            appendTerminalOutput("[i] No running command.")
+            return
+        }
+        running.stop()
+        runningTerminalCommand = null
+        appendTerminalOutput("[i] Command stopped.")
+    }
+
+    private fun refreshTerminalHistory() {
+        terminalHistoryView.text = terminalHistory.joinToString(separator = "\n")
+    }
+
+    private fun isShizukuReadyForTerminal(): Boolean {
+        val binderReady = try {
+            Shizuku.pingBinder()
+        } catch (_: Throwable) {
+            false
+        }
+        if (!binderReady) return false
+        return try {
+            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        } catch (_: Throwable) {
+            false
+        }
     }
 
     private fun handleVoiceRecognition(recognition: VoiceRecognitionResult) {
@@ -922,6 +1032,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        runningTerminalCommand?.stop()
+        runningTerminalCommand = null
         voiceService.shutdown()
         super.onDestroy()
     }

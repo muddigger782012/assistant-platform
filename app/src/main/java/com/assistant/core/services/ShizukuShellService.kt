@@ -2,6 +2,7 @@ package com.assistant.core.services
 
 import android.content.Context
 import android.os.ParcelFileDescriptor
+import moe.shizuku.server.IRemoteProcess
 import moe.shizuku.server.IShizukuService
 import rikka.shizuku.Shizuku
 import java.io.File
@@ -28,6 +29,23 @@ data class ParsedRishCommand(
     val usedRishMode: Boolean,
     val interactiveOnly: Boolean
 )
+
+class RunningShizukuCommand(
+    private val process: IRemoteProcess,
+    private val workerFuture: Future<*>,
+    private val executor: java.util.concurrent.ExecutorService
+) {
+    fun stop() {
+        try {
+            process.destroy()
+        } catch (_: Throwable) {
+            // ignore
+        } finally {
+            workerFuture.cancel(true)
+            executor.shutdownNow()
+        }
+    }
+}
 
 class ShizukuShellService(private val context: Context) {
 
@@ -139,6 +157,46 @@ class ShizukuShellService(private val context: Context) {
         }
     }
 
+    fun runStreaming(
+        parsed: ParsedRishCommand,
+        timeoutMs: Long = 120000,
+        onStdout: (String) -> Unit,
+        onStderr: (String) -> Unit,
+        onCompleted: (exitCode: Int, timedOut: Boolean) -> Unit,
+        onError: (String) -> Unit
+    ): RunningShizukuCommand {
+        val service = requireShizukuService()
+        val process = service.newProcess(parsed.args.toTypedArray(), null, "/")
+        val outStream = ParcelFileDescriptor.AutoCloseInputStream(process.inputStream)
+        val errStream = ParcelFileDescriptor.AutoCloseInputStream(process.errorStream)
+        val executor = Executors.newSingleThreadExecutor()
+        val worker = executor.submit {
+            try {
+                val stdoutReader = Thread {
+                    readStreamLines(outStream) { line -> onStdout(line) }
+                }
+                val stderrReader = Thread {
+                    readStreamLines(errStream) { line -> onStderr(line) }
+                }
+                stdoutReader.start()
+                stderrReader.start()
+
+                val finished = process.waitForTimeout(timeoutMs, "MILLISECONDS")
+                val exitCode = if (finished) process.exitValue() else {
+                    process.destroy()
+                    -1
+                }
+
+                stdoutReader.join(1500)
+                stderrReader.join(1500)
+                onCompleted(exitCode, !finished)
+            } catch (error: Throwable) {
+                onError(error.message ?: "Streaming shell execution failed.")
+            }
+        }
+        return RunningShizukuCommand(process, worker, executor)
+    }
+
     private fun requireShizukuService(): IShizukuService {
         val method = Shizuku::class.java.getDeclaredMethod("requireService")
         method.isAccessible = true
@@ -148,6 +206,15 @@ class ShizukuShellService(private val context: Context) {
 
     private fun readStream(inputStream: InputStream): String {
         return inputStream.bufferedReader().use { it.readText() }
+    }
+
+    private fun readStreamLines(inputStream: InputStream, onLine: (String) -> Unit) {
+        inputStream.bufferedReader().use { reader ->
+            while (true) {
+                val line = reader.readLine() ?: break
+                onLine(line)
+            }
+        }
     }
 
     private fun awaitString(future: Future<String>): String {
