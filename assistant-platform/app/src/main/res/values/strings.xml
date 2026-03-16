@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Assistant Platform</string>
+    <string name="command_hint">Enter command...</string>
+    <string name="create_project">Create Project</string>
+    <string name="run_shizuku_test">Run Shizuku Test</string>
+    <string name="show_capability_status">Show Capability Status</string>
+    <string name="output_log_label">Output Log</string>
+    <string name="output_placeholder">Output will appear here...</string>
+</resources>
