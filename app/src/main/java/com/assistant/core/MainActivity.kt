@@ -734,7 +734,7 @@ class MainActivity : AppCompatActivity() {
         val permissionState = when (getShizukuPermissionState()) {
             PackageManager.PERMISSION_GRANTED -> "granted"
             PackageManager.PERMISSION_DENIED -> "denied"
-            null -> "unknown (binder haven't been received)"
+            null -> "unknown (binder has not been received)"
             else -> "unknown"
         }
         return "Shizuku state -> binderReady=$binderReady, permission=$permissionState."
