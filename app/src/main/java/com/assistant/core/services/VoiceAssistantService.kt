@@ -9,6 +9,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.Voice
 import java.util.Locale
 
 class VoiceAssistantService(
@@ -66,7 +67,7 @@ class VoiceAssistantService(
     override fun onInit(status: Int) {
         ttsReady = status == TextToSpeech.SUCCESS
         if (ttsReady) {
-            tts.language = Locale.US
+            applyJarvisStyleVoiceProfile()
         }
     }
 
@@ -177,5 +178,50 @@ class VoiceAssistantService(
         } else {
             onStatus("Hotword detected. Listening for command...")
         }
+    }
+
+    private fun applyJarvisStyleVoiceProfile() {
+        val selectedVoice = chooseBestJarvisLikeVoice(tts.voices)
+        if (selectedVoice != null) {
+            tts.voice = selectedVoice
+            tts.language = selectedVoice.locale
+            onStatus("Voice profile active: ${selectedVoice.name}")
+        } else {
+            // Fall back to a broadly available English voice profile.
+            val fallback = Locale.UK
+            tts.language = fallback
+            onStatus("Voice profile active: ${fallback.displayName}")
+        }
+        tts.setPitch(0.92f)
+        tts.setSpeechRate(0.95f)
+    }
+
+    private fun chooseBestJarvisLikeVoice(voices: Set<Voice>?): Voice? {
+        if (voices.isNullOrEmpty()) return null
+        val candidates = voices
+            .filter { !it.isNetworkConnectionRequired }
+            .filter { it.locale.language == Locale.ENGLISH.language }
+            .filter { voice -> !(voice.features?.contains("notInstalled") == true) }
+
+        if (candidates.isEmpty()) return null
+
+        fun Voice.score(): Int {
+            val nameLower = name.lowercase(Locale.US)
+            val localeScore = when (locale.country.uppercase(Locale.US)) {
+                "GB" -> 300
+                "US" -> 180
+                else -> 100
+            }
+            val qualityScore = quality * 2
+            val latencyScore = (600 - latency).coerceAtLeast(0)
+            val toneHintScore = when {
+                nameLower.contains("male") -> 120
+                nameLower.contains("m") -> 30
+                else -> 0
+            }
+            return localeScore + qualityScore + latencyScore + toneHintScore
+        }
+
+        return candidates.maxByOrNull { it.score() }
     }
 }
