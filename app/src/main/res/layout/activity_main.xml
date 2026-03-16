@@ -38,6 +38,20 @@
                     android:inputType="text"
                     android:minHeight="48dp" />
 
+                <Button
+                    android:id="@+id/btnRunAssistantCommand"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/run_assistant_command" />
+
+                <Button
+                    android:id="@+id/btnAssistantQuickStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/assistant_quick_status" />
+
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"

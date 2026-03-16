@@ -325,6 +325,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindUiListeners() {
+        findViewById<Button>(R.id.btnRunAssistantCommand).setOnClickListener {
+            runAssistantCommandFromInput()
+        }
+
+        findViewById<Button>(R.id.btnAssistantQuickStatus).setOnClickListener {
+            val result = assistantEngine.executeAction(actionRegistry.showStatusRequest())
+            appendActionResult(result)
+            statusOutput.text = result.output ?: result.message
+        }
+
         findViewById<Button>(R.id.btnCreateProject).setOnClickListener {
             val defaultName = if (::currentVoiceConfig.isInitialized) currentVoiceConfig.defaultProjectName else "assistant_demo"
             val result = assistantEngine.executeAction(actionRegistry.createProjectRequest(defaultName))
@@ -349,11 +359,8 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnShowStatus).setOnClickListener {
             val commandText = commandInput.text?.toString()?.trim().orEmpty()
-            val result = if (commandText.isNotBlank()) {
-                assistantEngine.handleUserCommand(commandText)
-            } else {
-                assistantEngine.executeAction(actionRegistry.showStatusRequest())
-            }
+            val result = if (commandText.isBlank()) assistantEngine.executeAction(actionRegistry.showStatusRequest())
+            else assistantEngine.handleUserCommand(commandText)
             appendActionResult(result)
             statusOutput.text = result.output ?: result.message
             appendRecentAudit()
@@ -401,6 +408,18 @@ class MainActivity : AppCompatActivity() {
         btnApplyPackagePolicy.setOnClickListener { applyPackagePolicy() }
         btnLockNow.setOnClickListener { lockNow() }
         btnRebootFromDhizuku.setOnClickListener { rebootDevice() }
+    }
+
+    private fun runAssistantCommandFromInput() {
+        val commandText = commandInput.text?.toString()?.trim().orEmpty()
+        val result = if (commandText.isBlank()) {
+            assistantEngine.executeAction(actionRegistry.showStatusRequest())
+        } else {
+            assistantEngine.handleUserCommand(commandText)
+        }
+        appendActionResult(result)
+        statusOutput.text = result.output ?: result.message
+        appendRecentAudit()
     }
 
     private fun appendActionResult(result: ActionResult) {

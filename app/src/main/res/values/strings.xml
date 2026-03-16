@@ -97,4 +97,6 @@
     <string name="terminal_clear_output">Clear Output</string>
     <string name="terminal_output_title">Live Output</string>
     <string name="terminal_history_title">Command History</string>
+    <string name="run_assistant_command">Run Assistant Command</string>
+    <string name="assistant_quick_status">Quick Status</string>
 </resources>
