@@ -1,124 +1,454 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:orientation="vertical">
 
-    <EditText
-        android:id="@+id/etCommandInput"
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabMenu"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="@string/command_hint"
-        android:inputType="text"
-        android:minHeight="48dp" />
+        android:background="?attr/colorSurface"
+        app:tabMode="scrollable" />
 
-    <TextView
-        android:id="@+id/tvVoiceSectionTitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="@string/voice_controls_title"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/tvMicPermissionStatus"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:text="@string/mic_permission_status_missing" />
-
-    <Button
-        android:id="@+id/btnGrantMicPermission"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/grant_microphone_permission" />
-
-    <Button
-        android:id="@+id/btnCreateProject"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="@string/create_project" />
-
-    <Button
-        android:id="@+id/btnRunShizuku"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/run_shizuku_test" />
-
-    <Button
-        android:id="@+id/btnShowStatus"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/show_capability_status" />
-
-    <Button
-        android:id="@+id/btnToggleVoice"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/start_voice_hotword" />
-
-    <Button
-        android:id="@+id/btnVoiceSettings"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/voice_settings_title" />
-
-    <TextView
-        android:id="@+id/tvPrivilegeSectionTitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="@string/privilege_center_title"
-        android:textStyle="bold" />
-
-    <Button
-        android:id="@+id/btnRefreshPrivileges"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/refresh_privilege_status" />
-
-    <Button
-        android:id="@+id/btnRequestDhizukuPermission"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/request_dhizuku_permission" />
-
-    <ScrollView
-        android:id="@+id/svPrivilegeCenter"
-        android:layout_width="match_parent"
-        android:layout_height="170dp"
-        android:layout_marginTop="8dp"
-        android:background="#10000000"
-        android:padding="8dp">
-
-        <TextView
-            android:id="@+id/tvPrivilegeCenter"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textIsSelectable="true"
-            android:textSize="12sp" />
-    </ScrollView>
-
-    <ScrollView
+    <FrameLayout
+        android:id="@+id/tabContainer"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="12dp"
         android:layout_weight="1">
 
-        <TextView
-            android:id="@+id/tvOutputLog"
+        <ScrollView
+            android:id="@+id/tabAssistantSection"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="14sp" />
-    </ScrollView>
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="visible">
 
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <EditText
+                    android:id="@+id/etCommandInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/command_hint"
+                    android:inputType="text"
+                    android:minHeight="48dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/output_log_title"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvOutputLog"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textIsSelectable="true"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </ScrollView>
+
+        <ScrollView
+            android:id="@+id/tabProjectSection"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <Button
+                    android:id="@+id/btnCreateProject"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/create_project" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/project_tab_hint" />
+            </LinearLayout>
+        </ScrollView>
+
+        <ScrollView
+            android:id="@+id/tabShizukuSection"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <EditText
+                    android:id="@+id/etShizukuCommand"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="@string/shizuku_command_hint"
+                    android:inputType="text"
+                    android:minHeight="48dp" />
+
+                <Button
+                    android:id="@+id/btnRunShizuku"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/run_shizuku_test" />
+            </LinearLayout>
+        </ScrollView>
+
+        <ScrollView
+            android:id="@+id/tabStatusSection"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <Button
+                    android:id="@+id/btnShowStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/show_capability_status" />
+
+                <TextView
+                    android:id="@+id/tvStatusOutput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textIsSelectable="true"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </ScrollView>
+
+        <ScrollView
+            android:id="@+id/tabVoiceSection"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvVoiceSectionTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/voice_controls_title"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvMicPermissionStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/mic_permission_status_missing" />
+
+                <Button
+                    android:id="@+id/btnGrantMicPermission"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/grant_microphone_permission" />
+
+                <Button
+                    android:id="@+id/btnToggleVoice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/start_voice_hotword" />
+
+                <Button
+                    android:id="@+id/btnVoiceSettings"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/voice_settings_title" />
+            </LinearLayout>
+        </ScrollView>
+
+        <ScrollView
+            android:id="@+id/tabPermissionsSection"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/permissions_tab_title"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btnRequestAllRuntimePermissions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/request_all_runtime_permissions" />
+
+                <Button
+                    android:id="@+id/btnRequestAllSpecialPermissions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/request_all_special_permissions" />
+
+                <Button
+                    android:id="@+id/btnOpenOverlayPermission"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/open_overlay_permission" />
+
+                <Button
+                    android:id="@+id/btnOpenWriteSettingsPermission"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/open_write_settings_permission" />
+
+                <Button
+                    android:id="@+id/btnOpenAllFilesPermission"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/open_all_files_permission" />
+
+                <Button
+                    android:id="@+id/btnOpenUsageAccessPermission"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/open_usage_access_permission" />
+
+                <Button
+                    android:id="@+id/btnOpenBatteryOptimizationPermission"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/open_battery_optimization_permission" />
+
+                <Button
+                    android:id="@+id/btnOpenNotificationPolicyPermission"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/open_notification_policy_permission" />
+
+                <Button
+                    android:id="@+id/btnOpenAccessibilitySettings"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/open_accessibility_settings" />
+
+                <TextView
+                    android:id="@+id/tvSpecialPermissionsStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textIsSelectable="true"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </ScrollView>
+
+        <ScrollView
+            android:id="@+id/tabDhizukuSection"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvPrivilegeSectionTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/privilege_center_title"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btnRefreshPrivileges"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/refresh_privilege_status" />
+
+                <Button
+                    android:id="@+id/btnRequestDhizukuPermission"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/request_dhizuku_permission" />
+
+                <Button
+                    android:id="@+id/btnApplyCoreDelegatedScopes"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/apply_core_delegated_scopes" />
+
+                <TextView
+                    android:id="@+id/tvPrivilegeCenter"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="#10000000"
+                    android:padding="8dp"
+                    android:textIsSelectable="true"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/device_owner_controls_title"
+                    android:textStyle="bold" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchCameraDisabled"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/do_camera_disabled" />
+
+                <Button
+                    android:id="@+id/btnApplyCameraDisabled"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/apply_setting" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchScreenCaptureDisabled"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/do_screen_capture_disabled" />
+
+                <Button
+                    android:id="@+id/btnApplyScreenCaptureDisabled"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/apply_setting" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchInstallAppsRestricted"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/do_restrict_install_apps" />
+
+                <Button
+                    android:id="@+id/btnApplyInstallAppsRestriction"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/apply_setting" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchUninstallAppsRestricted"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/do_restrict_uninstall_apps" />
+
+                <Button
+                    android:id="@+id/btnApplyUninstallAppsRestriction"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/apply_setting" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchStatusBarDisabled"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/do_disable_status_bar" />
+
+                <Button
+                    android:id="@+id/btnApplyStatusBarDisabled"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/apply_setting" />
+
+                <EditText
+                    android:id="@+id/etLockScreenMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="@string/lock_screen_message_hint"
+                    android:inputType="text"
+                    android:minHeight="48dp" />
+
+                <Button
+                    android:id="@+id/btnApplyLockScreenMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/apply_lock_screen_message" />
+
+                <EditText
+                    android:id="@+id/etPolicyPackageName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="@string/policy_package_name_hint"
+                    android:inputType="text"
+                    android:minHeight="48dp" />
+
+                <com.google.android.material.switchmaterial.SwitchMaterial
+                    android:id="@+id/switchPackageUninstallBlocked"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/do_block_package_uninstall" />
+
+                <Button
+                    android:id="@+id/btnApplyPackagePolicy"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/apply_package_policy" />
+
+                <Button
+                    android:id="@+id/btnLockNow"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/do_lock_now" />
+
+                <Button
+                    android:id="@+id/btnRebootFromDhizuku"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/do_reboot_now" />
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
 </LinearLayout>

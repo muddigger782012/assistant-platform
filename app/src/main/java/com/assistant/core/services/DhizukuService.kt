@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
+import android.app.admin.DevicePolicyManager
 import com.rosan.dhizuku.api.Dhizuku
 import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
 
@@ -79,11 +80,9 @@ class DhizukuService {
             false
         }
 
-        val ownerComponent = try {
-            Dhizuku.getOwnerComponent()?.flattenToShortString()
-        } catch (_: Throwable) {
-            null
-        }
+        val ownerComponent = runCatching {
+            Dhizuku.getOwnerComponent().flattenToShortString()
+        }.getOrNull()
 
         val delegatedScopes = try {
             Dhizuku.getDelegatedScopes()?.toList().orEmpty()
@@ -130,6 +129,26 @@ class DhizukuService {
             })
         } catch (error: Throwable) {
             callback(false, "Dhizuku permission request failed: ${error.message ?: "unknown error"}")
+        }
+    }
+
+    fun applyCoreDelegatedScopes(context: Context, callback: (success: Boolean, message: String) -> Unit) {
+        val status = getStatus(context)
+        if (!status.initialized || !status.permissionGranted) {
+            callback(false, "Dhizuku permission is required before delegated scopes can be changed.")
+            return
+        }
+        val scopes = arrayOf(
+            DevicePolicyManager.DELEGATION_BLOCK_UNINSTALL,
+            DevicePolicyManager.DELEGATION_PACKAGE_ACCESS,
+            DevicePolicyManager.DELEGATION_PERMISSION_GRANT,
+            DevicePolicyManager.DELEGATION_APP_RESTRICTIONS
+        )
+        try {
+            Dhizuku.setDelegatedScopes(scopes)
+            callback(true, "Core delegated scopes applied successfully.")
+        } catch (error: Throwable) {
+            callback(false, "Failed to apply delegated scopes: ${error.message ?: "unknown error"}")
         }
     }
 

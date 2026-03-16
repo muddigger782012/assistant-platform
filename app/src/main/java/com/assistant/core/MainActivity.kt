@@ -1,15 +1,26 @@
 package com.assistant.core
 
 import android.Manifest
+import android.app.AlarmManager
+import android.app.AppOpsManager
+import android.app.NotificationManager
+import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.os.UserManager
+import android.provider.Settings
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -30,30 +41,63 @@ import com.assistant.core.models.CapabilityState
 import com.assistant.core.services.AuditService
 import com.assistant.core.services.CodingService
 import com.assistant.core.services.DhizukuService
+import com.assistant.core.services.DhizukuStatus
 import com.assistant.core.services.FileService
 import com.assistant.core.services.LocalVoiceCommand
 import com.assistant.core.services.PrivilegeCatalogService
 import com.assistant.core.services.SystemService
+import com.assistant.core.services.VoiceAssistantService
 import com.assistant.core.services.VoiceCommandParser
 import com.assistant.core.services.VoiceConfig
-import com.assistant.core.services.VoiceAssistantService
-import com.assistant.core.services.VoicePreferences
 import com.assistant.core.services.VoiceForegroundService
+import com.assistant.core.services.VoicePreferences
 import com.assistant.core.services.VoiceRecognitionResult
 import com.assistant.core.storage.ActionRepository
 import com.assistant.core.storage.AuditRepository
 import com.assistant.core.storage.Database
 import com.assistant.core.storage.ProjectRepository
+import com.google.android.material.switchmaterial.SwitchMaterial
+import com.google.android.material.tabs.TabLayout
+import com.rosan.dhizuku.api.Dhizuku
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var commandInput: EditText
+    private lateinit var shizukuCommandInput: EditText
     private lateinit var outputLog: TextView
+    private lateinit var statusOutput: TextView
+    private lateinit var specialPermissionsStatus: TextView
     private lateinit var micPermissionStatusView: TextView
     private lateinit var grantMicPermissionButton: Button
     private lateinit var privilegeCenterView: TextView
     private lateinit var refreshPrivilegesButton: Button
     private lateinit var requestDhizukuPermissionButton: Button
+    private lateinit var applyCoreDelegatedScopesButton: Button
+
+    private lateinit var voiceButton: Button
+    private lateinit var settingsButton: Button
+
+    private lateinit var switchCameraDisabled: SwitchMaterial
+    private lateinit var switchScreenCaptureDisabled: SwitchMaterial
+    private lateinit var switchInstallAppsRestricted: SwitchMaterial
+    private lateinit var switchUninstallAppsRestricted: SwitchMaterial
+    private lateinit var switchStatusBarDisabled: SwitchMaterial
+    private lateinit var switchPackageUninstallBlocked: SwitchMaterial
+    private lateinit var lockScreenMessageInput: EditText
+    private lateinit var policyPackageNameInput: EditText
+
+    private lateinit var btnApplyCameraDisabled: Button
+    private lateinit var btnApplyScreenCaptureDisabled: Button
+    private lateinit var btnApplyInstallAppsRestriction: Button
+    private lateinit var btnApplyUninstallAppsRestriction: Button
+    private lateinit var btnApplyStatusBarDisabled: Button
+    private lateinit var btnApplyLockScreenMessage: Button
+    private lateinit var btnApplyPackagePolicy: Button
+    private lateinit var btnLockNow: Button
+    private lateinit var btnRebootFromDhizuku: Button
+
+    private lateinit var tabLayout: TabLayout
+    private lateinit var tabSections: List<View>
 
     private lateinit var actionRegistry: ActionRegistry
     private lateinit var assistantEngine: AssistantEngine
@@ -65,16 +109,20 @@ class MainActivity : AppCompatActivity() {
     private lateinit var voiceCommandParser: VoiceCommandParser
     private lateinit var dhizukuService: DhizukuService
     private lateinit var privilegeCatalogService: PrivilegeCatalogService
-    private lateinit var voiceButton: Button
-    private lateinit var settingsButton: Button
     private lateinit var currentVoiceConfig: VoiceConfig
+    private lateinit var currentDhizukuStatus: DhizukuStatus
+
+    private val outputLines = mutableListOf<String>()
+    private val uiPreferences by lazy { getSharedPreferences("main_ui", MODE_PRIVATE) }
+    private val devicePolicyManager by lazy {
+        getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+    }
+
     private var voiceEnabled = false
     private var shouldStartVoiceAfterPermission = false
     private var receiverRegistered = false
     private var pendingClarification: String? = null
-    private val uiPreferences by lazy { getSharedPreferences("main_ui", MODE_PRIVATE) }
 
-    private val outputLines = mutableListOf<String>()
     private val voiceEventReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != VoiceForegroundService.ACTION_EVENT) return
@@ -85,20 +133,29 @@ class MainActivity : AppCompatActivity() {
             refreshVoiceButtonLabel()
         }
     }
+
     private val audioPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
+        updateMicrophonePermissionUi()
         if (granted) {
-            updateMicrophonePermissionUi()
-            if (shouldStartVoiceAfterPermission) {
-                startVoiceHotwordMode()
-            }
+            if (shouldStartVoiceAfterPermission) startVoiceHotwordMode()
         } else {
             appendOutput(getString(R.string.voice_permission_required))
             shouldStartVoiceAfterPermission = false
-            updateMicrophonePermissionUi()
         }
     }
+
+    private val runtimePermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grantResults ->
+        val granted = grantResults.filterValues { it }.keys
+        val denied = grantResults.filterValues { !it }.keys
+        appendOutput("Runtime granted: ${if (granted.isEmpty()) "none" else granted.joinToString()}")
+        appendOutput("Runtime denied: ${if (denied.isEmpty()) "none" else denied.joinToString()}")
+        refreshSpecialPermissionsStatus()
+    }
+
     private val voiceSettingsLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -109,18 +166,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        commandInput = findViewById(R.id.etCommandInput)
-        outputLog = findViewById(R.id.tvOutputLog)
-        micPermissionStatusView = findViewById(R.id.tvMicPermissionStatus)
-        grantMicPermissionButton = findViewById(R.id.btnGrantMicPermission)
-        privilegeCenterView = findViewById(R.id.tvPrivilegeCenter)
-        refreshPrivilegesButton = findViewById(R.id.btnRefreshPrivileges)
-        requestDhizukuPermissionButton = findViewById(R.id.btnRequestDhizukuPermission)
-        val createButton: Button = findViewById(R.id.btnCreateProject)
-        val shizukuButton: Button = findViewById(R.id.btnRunShizuku)
-        val statusButton: Button = findViewById(R.id.btnShowStatus)
-        voiceButton = findViewById(R.id.btnToggleVoice)
-        settingsButton = findViewById(R.id.btnVoiceSettings)
+        initViews()
+        setupTabs()
 
         val database = Database(this)
         val projectRepository = ProjectRepository(database)
@@ -139,12 +186,12 @@ class MainActivity : AppCompatActivity() {
         val dhizukuAdapter = DhizukuAdapter(this, dhizukuService)
         val specialAccessAdapter = SpecialAccessAdapter()
 
-        val capabilityDetector = CapabilityDetector()
-        capabilityState = capabilityDetector.detect(this)
+        capabilityState = CapabilityDetector().detect(this)
 
         actionRegistry = ActionRegistry()
         voiceCommandParser = VoiceCommandParser(actionRegistry)
         voicePreferences = VoicePreferences(this)
+
         assistantEngine = AssistantEngine(
             intentClassifier = IntentClassifier(),
             actionRegistry = actionRegistry,
@@ -167,37 +214,110 @@ class MainActivity : AppCompatActivity() {
             onStatus = { status -> runOnUiThread { appendOutput(status) } },
             onHotwordDetected = { runOnUiThread { appendOutput("Hotword detected: jarvis") } },
             onCommandDetected = { recognition ->
-                runOnUiThread {
-                    handleVoiceRecognition(recognition)
-                }
+                runOnUiThread { handleVoiceRecognition(recognition) }
             }
         )
 
+        bindUiListeners()
         reloadVoiceConfiguration(showStatus = true)
+        refreshPrivilegeCenter()
+        refreshSpecialPermissionsStatus()
+        updateMicrophonePermissionUi()
+        promptForMicrophonePermissionOnFirstLaunch()
+
         appendOutput("Startup capability status:\n${systemService.buildStatusSummary(capabilityState)}")
         appendOutput(getString(R.string.voice_hint))
         appendRecentAudit()
-        updateMicrophonePermissionUi()
-        promptForMicrophonePermissionOnFirstLaunch()
-        refreshPrivilegeCenter()
+    }
 
-        createButton.setOnClickListener {
-            val result = assistantEngine.executeAction(actionRegistry.createProjectRequest("assistant_demo"))
+    private fun initViews() {
+        tabLayout = findViewById(R.id.tabMenu)
+        tabSections = listOf(
+            findViewById(R.id.tabAssistantSection),
+            findViewById(R.id.tabProjectSection),
+            findViewById(R.id.tabShizukuSection),
+            findViewById(R.id.tabStatusSection),
+            findViewById(R.id.tabVoiceSection),
+            findViewById(R.id.tabPermissionsSection),
+            findViewById(R.id.tabDhizukuSection)
+        )
+
+        commandInput = findViewById(R.id.etCommandInput)
+        shizukuCommandInput = findViewById(R.id.etShizukuCommand)
+        outputLog = findViewById(R.id.tvOutputLog)
+        statusOutput = findViewById(R.id.tvStatusOutput)
+        specialPermissionsStatus = findViewById(R.id.tvSpecialPermissionsStatus)
+        micPermissionStatusView = findViewById(R.id.tvMicPermissionStatus)
+        grantMicPermissionButton = findViewById(R.id.btnGrantMicPermission)
+        privilegeCenterView = findViewById(R.id.tvPrivilegeCenter)
+        refreshPrivilegesButton = findViewById(R.id.btnRefreshPrivileges)
+        requestDhizukuPermissionButton = findViewById(R.id.btnRequestDhizukuPermission)
+        applyCoreDelegatedScopesButton = findViewById(R.id.btnApplyCoreDelegatedScopes)
+
+        voiceButton = findViewById(R.id.btnToggleVoice)
+        settingsButton = findViewById(R.id.btnVoiceSettings)
+
+        switchCameraDisabled = findViewById(R.id.switchCameraDisabled)
+        switchScreenCaptureDisabled = findViewById(R.id.switchScreenCaptureDisabled)
+        switchInstallAppsRestricted = findViewById(R.id.switchInstallAppsRestricted)
+        switchUninstallAppsRestricted = findViewById(R.id.switchUninstallAppsRestricted)
+        switchStatusBarDisabled = findViewById(R.id.switchStatusBarDisabled)
+        switchPackageUninstallBlocked = findViewById(R.id.switchPackageUninstallBlocked)
+        lockScreenMessageInput = findViewById(R.id.etLockScreenMessage)
+        policyPackageNameInput = findViewById(R.id.etPolicyPackageName)
+
+        btnApplyCameraDisabled = findViewById(R.id.btnApplyCameraDisabled)
+        btnApplyScreenCaptureDisabled = findViewById(R.id.btnApplyScreenCaptureDisabled)
+        btnApplyInstallAppsRestriction = findViewById(R.id.btnApplyInstallAppsRestriction)
+        btnApplyUninstallAppsRestriction = findViewById(R.id.btnApplyUninstallAppsRestriction)
+        btnApplyStatusBarDisabled = findViewById(R.id.btnApplyStatusBarDisabled)
+        btnApplyLockScreenMessage = findViewById(R.id.btnApplyLockScreenMessage)
+        btnApplyPackagePolicy = findViewById(R.id.btnApplyPackagePolicy)
+        btnLockNow = findViewById(R.id.btnLockNow)
+        btnRebootFromDhizuku = findViewById(R.id.btnRebootFromDhizuku)
+    }
+
+    private fun setupTabs() {
+        val titles = listOf(
+            getString(R.string.tab_assistant),
+            getString(R.string.tab_project),
+            getString(R.string.tab_shizuku),
+            getString(R.string.tab_status),
+            getString(R.string.tab_voice),
+            getString(R.string.tab_permissions),
+            getString(R.string.tab_dhizuku)
+        )
+        titles.forEach { tabLayout.addTab(tabLayout.newTab().setText(it)) }
+        showTab(0)
+        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab) = showTab(tab.position)
+            override fun onTabUnselected(tab: TabLayout.Tab) = Unit
+            override fun onTabReselected(tab: TabLayout.Tab) = Unit
+        })
+    }
+
+    private fun showTab(index: Int) {
+        tabSections.forEachIndexed { i, view ->
+            view.visibility = if (i == index) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun bindUiListeners() {
+        findViewById<Button>(R.id.btnCreateProject).setOnClickListener {
+            val defaultName = if (::currentVoiceConfig.isInitialized) currentVoiceConfig.defaultProjectName else "assistant_demo"
+            val result = assistantEngine.executeAction(actionRegistry.createProjectRequest(defaultName))
             appendActionResult(result)
             appendRecentAudit()
         }
 
-        shizukuButton.setOnClickListener {
-            val commandText = commandInput.text?.toString()?.trim().orEmpty()
-            val command = if (commandText.isBlank()) "id" else commandText
-            val result = assistantEngine.executeAction(
-                actionRegistry.runShellRequest(command = command, confirmed = true)
-            )
+        findViewById<Button>(R.id.btnRunShizuku).setOnClickListener {
+            val command = shizukuCommandInput.text?.toString()?.trim().orEmpty().ifBlank { "id" }
+            val result = assistantEngine.executeAction(actionRegistry.runShellRequest(command = command, confirmed = true))
             appendActionResult(result)
             appendRecentAudit()
         }
 
-        statusButton.setOnClickListener {
+        findViewById<Button>(R.id.btnShowStatus).setOnClickListener {
             val commandText = commandInput.text?.toString()?.trim().orEmpty()
             val result = if (commandText.isNotBlank()) {
                 assistantEngine.handleUserCommand(commandText)
@@ -205,20 +325,15 @@ class MainActivity : AppCompatActivity() {
                 assistantEngine.executeAction(actionRegistry.showStatusRequest())
             }
             appendActionResult(result)
+            statusOutput.text = result.output ?: result.message
             appendRecentAudit()
         }
 
         voiceButton.setOnClickListener {
-            if (voiceEnabled) {
-                stopVoiceHotwordMode()
-            } else {
-                ensureMicPermissionAndStartVoice()
-            }
+            if (voiceEnabled) stopVoiceHotwordMode() else ensureMicPermissionAndStartVoice()
         }
 
-        settingsButton.setOnClickListener {
-            openVoiceSettings()
-        }
+        settingsButton.setOnClickListener { openVoiceSettings() }
 
         grantMicPermissionButton.setOnClickListener {
             shouldStartVoiceAfterPermission = false
@@ -230,9 +345,32 @@ class MainActivity : AppCompatActivity() {
             appendOutput(getString(R.string.privilege_status_refreshed))
         }
 
-        requestDhizukuPermissionButton.setOnClickListener {
-            requestDhizukuPermission()
+        requestDhizukuPermissionButton.setOnClickListener { requestDhizukuPermission() }
+        applyCoreDelegatedScopesButton.setOnClickListener { applyCoreDelegatedScopes() }
+
+        findViewById<Button>(R.id.btnRequestAllRuntimePermissions).setOnClickListener {
+            requestAllRuntimePermissions()
         }
+        findViewById<Button>(R.id.btnRequestAllSpecialPermissions).setOnClickListener {
+            requestAllSpecialPermissions()
+        }
+        findViewById<Button>(R.id.btnOpenOverlayPermission).setOnClickListener { openOverlayPermission() }
+        findViewById<Button>(R.id.btnOpenWriteSettingsPermission).setOnClickListener { openWriteSettingsPermission() }
+        findViewById<Button>(R.id.btnOpenAllFilesPermission).setOnClickListener { openAllFilesPermission() }
+        findViewById<Button>(R.id.btnOpenUsageAccessPermission).setOnClickListener { openUsageAccessPermission() }
+        findViewById<Button>(R.id.btnOpenBatteryOptimizationPermission).setOnClickListener { openBatteryOptimizationPermission() }
+        findViewById<Button>(R.id.btnOpenNotificationPolicyPermission).setOnClickListener { openNotificationPolicyPermission() }
+        findViewById<Button>(R.id.btnOpenAccessibilitySettings).setOnClickListener { openAccessibilitySettings() }
+
+        btnApplyCameraDisabled.setOnClickListener { applyCameraDisabled() }
+        btnApplyScreenCaptureDisabled.setOnClickListener { applyScreenCaptureDisabled() }
+        btnApplyInstallAppsRestriction.setOnClickListener { applyInstallAppsRestriction() }
+        btnApplyUninstallAppsRestriction.setOnClickListener { applyUninstallAppsRestriction() }
+        btnApplyStatusBarDisabled.setOnClickListener { applyStatusBarDisabled() }
+        btnApplyLockScreenMessage.setOnClickListener { applyLockScreenMessage() }
+        btnApplyPackagePolicy.setOnClickListener { applyPackagePolicy() }
+        btnLockNow.setOnClickListener { lockNow() }
+        btnRebootFromDhizuku.setOnClickListener { rebootDevice() }
     }
 
     private fun appendActionResult(result: ActionResult) {
@@ -261,8 +399,7 @@ class MainActivity : AppCompatActivity() {
         commandInput.setText(command)
         appendOutput("Voice command (${(recognition.confidence * 100f).toInt()}%): $command")
 
-        val awaiting = pendingClarification
-        if (!awaiting.isNullOrBlank()) {
+        pendingClarification?.let { awaiting ->
             when {
                 looksLikeYes(command) -> {
                     pendingClarification = null
@@ -314,24 +451,13 @@ class MainActivity : AppCompatActivity() {
                     ?: assistantEngine.handleUserCommand(parsed.fallbackTextCommand ?: command)
                 appendActionResult(result)
                 appendRecentAudit()
-                voiceService.speak(
-                    if (result.success) {
-                        result.message
-                    } else {
-                        "I couldn't complete that command."
-                    }
-                )
+                voiceService.speak(if (result.success) result.message else "I couldn't complete that command.")
             }
         }
     }
 
     private fun ensureMicPermissionAndStartVoice() {
-        val granted = ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (granted) {
+        if (hasMicrophonePermission()) {
             startVoiceHotwordMode()
         } else {
             shouldStartVoiceAfterPermission = true
@@ -350,12 +476,7 @@ class MainActivity : AppCompatActivity() {
             voiceEnabled = true
             appendOutput(getString(R.string.voice_started))
             voiceService.startHotwordLoop()
-            appendOutput(
-                getString(
-                    R.string.voice_engine_label,
-                    voiceService.getCurrentHotwordEngine().name
-                )
-            )
+            appendOutput(getString(R.string.voice_engine_label, voiceService.getCurrentHotwordEngine().name))
         }
         refreshVoiceButtonLabel()
     }
@@ -371,27 +492,6 @@ class MainActivity : AppCompatActivity() {
             voiceService.stopListening()
         }
         refreshVoiceButtonLabel()
-    }
-
-    override fun onDestroy() {
-        voiceService.shutdown()
-        super.onDestroy()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        reloadVoiceConfiguration(showStatus = false)
-        updateMicrophonePermissionUi()
-    }
-
-    override fun onStart() {
-        super.onStart()
-        registerVoiceEventReceiver()
-    }
-
-    override fun onStop() {
-        unregisterVoiceEventReceiver()
-        super.onStop()
     }
 
     private fun openVoiceSettings() {
@@ -411,12 +511,7 @@ class MainActivity : AppCompatActivity() {
             voiceEnabled
         }
         if (showStatus) {
-            appendOutput(
-                getString(
-                    R.string.voice_engine_label,
-                    voiceService.getCurrentHotwordEngine().name
-                )
-            )
+            appendOutput(getString(R.string.voice_engine_label, voiceService.getCurrentHotwordEngine().name))
             appendOutput(
                 getString(
                     R.string.voice_mode_label,
@@ -436,11 +531,342 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshVoiceButtonLabel() {
+        if (!::currentVoiceConfig.isInitialized) return
         voiceButton.text = if (currentVoiceConfig.useForegroundServiceMode) {
             if (voiceEnabled) getString(R.string.stop_voice_service) else getString(R.string.start_voice_service)
         } else {
             if (voiceEnabled) getString(R.string.stop_voice_hotword) else getString(R.string.start_voice_hotword)
         }
+    }
+
+    private fun hasMicrophonePermission(): Boolean {
+        return ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun updateMicrophonePermissionUi() {
+        val granted = hasMicrophonePermission()
+        micPermissionStatusView.text = if (granted) {
+            getString(R.string.mic_permission_status_ok)
+        } else {
+            getString(R.string.mic_permission_status_missing)
+        }
+        grantMicPermissionButton.isEnabled = !granted
+    }
+
+    private fun promptForMicrophonePermissionOnFirstLaunch() {
+        val alreadyPrompted = uiPreferences.getBoolean(KEY_PROMPTED_MIC_PERMISSION, false)
+        if (!alreadyPrompted && !hasMicrophonePermission()) {
+            uiPreferences.edit().putBoolean(KEY_PROMPTED_MIC_PERMISSION, true).apply()
+            appendOutput(getString(R.string.mic_permission_prompt_startup))
+            shouldStartVoiceAfterPermission = false
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun requestDhizukuPermission() {
+        dhizukuService.requestPermission(this) { granted, message ->
+            runOnUiThread {
+                appendOutput(message)
+                refreshPrivilegeCenter()
+                if (granted) appendOutput(getString(R.string.dhizuku_permission_granted_hint))
+            }
+        }
+    }
+
+    private fun applyCoreDelegatedScopes() {
+        dhizukuService.applyCoreDelegatedScopes(this) { success, message ->
+            runOnUiThread {
+                appendOutput(message)
+                if (success) refreshPrivilegeCenter()
+            }
+        }
+    }
+
+    private fun refreshPrivilegeCenter() {
+        currentDhizukuStatus = dhizukuService.getStatus(this)
+        capabilityState = capabilityState.copy(dhizuku = currentDhizukuStatus.initialized)
+        privilegeCenterView.text = privilegeCatalogService.buildPrivilegeOverview(
+            capabilityState = capabilityState,
+            dhizukuStatus = currentDhizukuStatus
+        )
+        requestDhizukuPermissionButton.isEnabled = currentDhizukuStatus.initialized && !currentDhizukuStatus.permissionGranted
+        applyCoreDelegatedScopesButton.isEnabled = currentDhizukuStatus.initialized && currentDhizukuStatus.permissionGranted
+        refreshDeviceOwnerControlsAvailability()
+    }
+
+    private fun refreshDeviceOwnerControlsAvailability() {
+        val enabled = resolvePolicyComponent() != null
+        val controls = listOf(
+            switchCameraDisabled,
+            switchScreenCaptureDisabled,
+            switchInstallAppsRestricted,
+            switchUninstallAppsRestricted,
+            switchStatusBarDisabled,
+            switchPackageUninstallBlocked,
+            lockScreenMessageInput,
+            policyPackageNameInput,
+            btnApplyCameraDisabled,
+            btnApplyScreenCaptureDisabled,
+            btnApplyInstallAppsRestriction,
+            btnApplyUninstallAppsRestriction,
+            btnApplyStatusBarDisabled,
+            btnApplyLockScreenMessage,
+            btnApplyPackagePolicy,
+            btnLockNow,
+            btnRebootFromDhizuku
+        )
+        controls.forEach { it.isEnabled = enabled }
+    }
+
+    private fun resolvePolicyComponent(): ComponentName? {
+        return try {
+            when {
+                currentDhizukuStatus.initialized && currentDhizukuStatus.permissionGranted -> {
+                    Dhizuku.getOwnerComponent(this)
+                }
+                capabilityState.deviceOwner -> {
+                    Dhizuku.getOwnerComponent(devicePolicyManager)
+                }
+                else -> null
+            }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun applyCameraDisabled() = withPolicyComponent { admin ->
+        devicePolicyManager.setCameraDisabled(admin, switchCameraDisabled.isChecked)
+        appendOutput("Camera disabled set to ${switchCameraDisabled.isChecked}")
+    }
+
+    private fun applyScreenCaptureDisabled() = withPolicyComponent { admin ->
+        devicePolicyManager.setScreenCaptureDisabled(admin, switchScreenCaptureDisabled.isChecked)
+        appendOutput("Screen capture disabled set to ${switchScreenCaptureDisabled.isChecked}")
+    }
+
+    private fun applyInstallAppsRestriction() = withPolicyComponent { admin ->
+        applyUserRestriction(admin, UserManager.DISALLOW_INSTALL_APPS, switchInstallAppsRestricted.isChecked)
+        appendOutput("Install apps restriction set to ${switchInstallAppsRestricted.isChecked}")
+    }
+
+    private fun applyUninstallAppsRestriction() = withPolicyComponent { admin ->
+        applyUserRestriction(admin, UserManager.DISALLOW_UNINSTALL_APPS, switchUninstallAppsRestricted.isChecked)
+        appendOutput("Uninstall apps restriction set to ${switchUninstallAppsRestricted.isChecked}")
+    }
+
+    private fun applyStatusBarDisabled() = withPolicyComponent { admin ->
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val applied = devicePolicyManager.setStatusBarDisabled(admin, switchStatusBarDisabled.isChecked)
+            appendOutput("Status bar disabled set to ${switchStatusBarDisabled.isChecked} (applied=$applied)")
+        } else {
+            appendOutput("Status bar policy requires Android 6+.")
+        }
+    }
+
+    private fun applyLockScreenMessage() = withPolicyComponent { admin ->
+        val message = lockScreenMessageInput.text?.toString().orEmpty()
+        devicePolicyManager.setDeviceOwnerLockScreenInfo(admin, message)
+        appendOutput("Lock screen message updated.")
+    }
+
+    private fun applyPackagePolicy() = withPolicyComponent { admin ->
+        val packageName = policyPackageNameInput.text?.toString()?.trim().orEmpty()
+        if (packageName.isBlank()) {
+            appendOutput("Package name is required.")
+            return@withPolicyComponent
+        }
+        devicePolicyManager.setUninstallBlocked(admin, packageName, switchPackageUninstallBlocked.isChecked)
+        appendOutput("Package uninstall policy set for $packageName = ${switchPackageUninstallBlocked.isChecked}")
+    }
+
+    private fun lockNow() = withPolicyComponent {
+        devicePolicyManager.lockNow()
+        appendOutput("Lock now command sent.")
+    }
+
+    private fun rebootDevice() = withPolicyComponent { admin ->
+        devicePolicyManager.reboot(admin)
+        appendOutput("Reboot command sent.")
+    }
+
+    private fun applyUserRestriction(admin: ComponentName, key: String, enabled: Boolean) {
+        if (enabled) {
+            devicePolicyManager.addUserRestriction(admin, key)
+        } else {
+            devicePolicyManager.clearUserRestriction(admin, key)
+        }
+    }
+
+    private fun withPolicyComponent(action: (ComponentName) -> Unit) {
+        val admin = resolvePolicyComponent()
+        if (admin == null) {
+            appendOutput("No active Dhizuku/device-owner component. Request Dhizuku permission first.")
+            return
+        }
+        try {
+            action(admin)
+            refreshPrivilegeCenter()
+        } catch (error: SecurityException) {
+            appendOutput("Policy action blocked: ${error.message ?: "security exception"}")
+        } catch (error: Throwable) {
+            appendOutput("Policy action failed: ${error.message ?: "unknown error"}")
+        }
+    }
+
+    private fun requestAllRuntimePermissions() {
+        runtimePermissionsLauncher.launch(buildRuntimePermissionList().toTypedArray())
+    }
+
+    private fun buildRuntimePermissionList(): List<String> {
+        val permissions = mutableListOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.CAMERA,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.READ_CONTACTS,
+            Manifest.permission.WRITE_CONTACTS,
+            Manifest.permission.READ_PHONE_STATE
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions += Manifest.permission.BLUETOOTH_CONNECT
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions += Manifest.permission.POST_NOTIFICATIONS
+            permissions += Manifest.permission.READ_MEDIA_IMAGES
+            permissions += Manifest.permission.READ_MEDIA_VIDEO
+            permissions += Manifest.permission.READ_MEDIA_AUDIO
+        } else {
+            permissions += Manifest.permission.READ_EXTERNAL_STORAGE
+        }
+        return permissions.distinct()
+    }
+
+    private fun requestAllSpecialPermissions() {
+        val opened = openNextMissingSpecialPermission()
+        if (!opened) {
+            appendOutput("All tracked special permissions already appear granted.")
+        }
+        refreshSpecialPermissionsStatus()
+    }
+
+    private fun openNextMissingSpecialPermission(): Boolean {
+        return when {
+            !Settings.canDrawOverlays(this) -> {
+                openOverlayPermission(); true
+            }
+            !Settings.System.canWrite(this) -> {
+                openWriteSettingsPermission(); true
+            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !android.os.Environment.isExternalStorageManager() -> {
+                openAllFilesPermission(); true
+            }
+            !hasUsageAccess() -> {
+                openUsageAccessPermission(); true
+            }
+            !isIgnoringBatteryOptimizations() -> {
+                openBatteryOptimizationPermission(); true
+            }
+            !isNotificationPolicyAccessGranted() -> {
+                openNotificationPolicyPermission(); true
+            }
+            !isAccessibilityEnabledForApp() -> {
+                openAccessibilitySettings(); true
+            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !canScheduleExactAlarms() -> {
+                openExactAlarmPermission(); true
+            }
+            else -> false
+        }
+    }
+
+    private fun refreshSpecialPermissionsStatus() {
+        specialPermissionsStatus.text = buildString {
+            appendLine("Runtime permissions:")
+            buildRuntimePermissionList().forEach { permission ->
+                val granted = ContextCompat.checkSelfPermission(this@MainActivity, permission) == PackageManager.PERMISSION_GRANTED
+                appendLine("- $permission: $granted")
+            }
+            appendLine()
+            appendLine("Special app-access permissions:")
+            appendLine("- Overlay: ${Settings.canDrawOverlays(this@MainActivity)}")
+            appendLine("- Write Settings: ${Settings.System.canWrite(this@MainActivity)}")
+            appendLine("- All Files Access: ${if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) android.os.Environment.isExternalStorageManager() else "N/A"}")
+            appendLine("- Usage Access: ${hasUsageAccess()}")
+            appendLine("- Battery Optimization Exemption: ${isIgnoringBatteryOptimizations()}")
+            appendLine("- Notification Policy Access: ${isNotificationPolicyAccessGranted()}")
+            appendLine("- Accessibility Enabled For App: ${isAccessibilityEnabledForApp()}")
+            appendLine("- Schedule Exact Alarms: ${if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) canScheduleExactAlarms() else "N/A"}")
+        }
+    }
+
+    private fun openOverlayPermission() {
+        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+    }
+
+    private fun openWriteSettingsPermission() {
+        startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:$packageName")))
+    }
+
+    private fun openAllFilesPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
+        }
+    }
+
+    private fun openUsageAccessPermission() {
+        startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+    }
+
+    private fun openBatteryOptimizationPermission() {
+        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+        startActivity(intent)
+    }
+
+    private fun openNotificationPolicyPermission() {
+        startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+    }
+
+    private fun openAccessibilitySettings() {
+        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    private fun openExactAlarmPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
+        }
+    }
+
+    private fun hasUsageAccess(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOps.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+        } else {
+            @Suppress("DEPRECATION")
+            appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
+        }
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun isIgnoringBatteryOptimizations(): Boolean {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return powerManager.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    private fun isNotificationPolicyAccessGranted(): Boolean {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return notificationManager.isNotificationPolicyAccessGranted
+    }
+
+    private fun isAccessibilityEnabledForApp(): Boolean {
+        val enabledServices = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+        return enabledServices?.contains(packageName, ignoreCase = true) == true
+    }
+
+    private fun canScheduleExactAlarms(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        return alarmManager.canScheduleExactAlarms()
     }
 
     private fun registerVoiceEventReceiver() {
@@ -478,53 +904,26 @@ class MainActivity : AppCompatActivity() {
             .trim()
     }
 
-    private fun hasMicrophonePermission(): Boolean {
-        return ContextCompat.checkSelfPermission(
-            this,
-            Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
+    override fun onStart() {
+        super.onStart()
+        registerVoiceEventReceiver()
     }
 
-    private fun updateMicrophonePermissionUi() {
-        val granted = hasMicrophonePermission()
-        micPermissionStatusView.text = if (granted) {
-            getString(R.string.mic_permission_status_ok)
-        } else {
-            getString(R.string.mic_permission_status_missing)
-        }
-        grantMicPermissionButton.isEnabled = !granted
+    override fun onStop() {
+        unregisterVoiceEventReceiver()
+        super.onStop()
     }
 
-    private fun promptForMicrophonePermissionOnFirstLaunch() {
-        val alreadyPrompted = uiPreferences.getBoolean(KEY_PROMPTED_MIC_PERMISSION, false)
-        if (!alreadyPrompted && !hasMicrophonePermission()) {
-            uiPreferences.edit().putBoolean(KEY_PROMPTED_MIC_PERMISSION, true).apply()
-            appendOutput(getString(R.string.mic_permission_prompt_startup))
-            shouldStartVoiceAfterPermission = false
-            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        }
+    override fun onResume() {
+        super.onResume()
+        reloadVoiceConfiguration(showStatus = false)
+        updateMicrophonePermissionUi()
+        refreshSpecialPermissionsStatus()
     }
 
-    private fun requestDhizukuPermission() {
-        dhizukuService.requestPermission(this) { granted, message ->
-            runOnUiThread {
-                appendOutput(message)
-                refreshPrivilegeCenter()
-                if (granted) {
-                    appendOutput(getString(R.string.dhizuku_permission_granted_hint))
-                }
-            }
-        }
-    }
-
-    private fun refreshPrivilegeCenter() {
-        val dhizukuStatus = dhizukuService.getStatus(this)
-        capabilityState = capabilityState.copy(dhizuku = dhizukuStatus.initialized)
-        privilegeCenterView.text = privilegeCatalogService.buildPrivilegeOverview(
-            capabilityState = capabilityState,
-            dhizukuStatus = dhizukuStatus
-        )
-        requestDhizukuPermissionButton.isEnabled = dhizukuStatus.initialized && !dhizukuStatus.permissionGranted
+    override fun onDestroy() {
+        voiceService.shutdown()
+        super.onDestroy()
     }
 
     companion object {
