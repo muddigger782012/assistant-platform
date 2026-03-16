@@ -29,8 +29,10 @@ import com.assistant.core.models.ActionResult
 import com.assistant.core.models.CapabilityState
 import com.assistant.core.services.AuditService
 import com.assistant.core.services.CodingService
+import com.assistant.core.services.DhizukuService
 import com.assistant.core.services.FileService
 import com.assistant.core.services.LocalVoiceCommand
+import com.assistant.core.services.PrivilegeCatalogService
 import com.assistant.core.services.SystemService
 import com.assistant.core.services.VoiceCommandParser
 import com.assistant.core.services.VoiceConfig
@@ -49,6 +51,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var outputLog: TextView
     private lateinit var micPermissionStatusView: TextView
     private lateinit var grantMicPermissionButton: Button
+    private lateinit var privilegeCenterView: TextView
+    private lateinit var refreshPrivilegesButton: Button
+    private lateinit var requestDhizukuPermissionButton: Button
 
     private lateinit var actionRegistry: ActionRegistry
     private lateinit var assistantEngine: AssistantEngine
@@ -58,6 +63,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var voiceService: VoiceAssistantService
     private lateinit var voicePreferences: VoicePreferences
     private lateinit var voiceCommandParser: VoiceCommandParser
+    private lateinit var dhizukuService: DhizukuService
+    private lateinit var privilegeCatalogService: PrivilegeCatalogService
     private lateinit var voiceButton: Button
     private lateinit var settingsButton: Button
     private lateinit var currentVoiceConfig: VoiceConfig
@@ -106,6 +113,9 @@ class MainActivity : AppCompatActivity() {
         outputLog = findViewById(R.id.tvOutputLog)
         micPermissionStatusView = findViewById(R.id.tvMicPermissionStatus)
         grantMicPermissionButton = findViewById(R.id.btnGrantMicPermission)
+        privilegeCenterView = findViewById(R.id.tvPrivilegeCenter)
+        refreshPrivilegesButton = findViewById(R.id.btnRefreshPrivileges)
+        requestDhizukuPermissionButton = findViewById(R.id.btnRequestDhizukuPermission)
         val createButton: Button = findViewById(R.id.btnCreateProject)
         val shizukuButton: Button = findViewById(R.id.btnRunShizuku)
         val statusButton: Button = findViewById(R.id.btnShowStatus)
@@ -124,7 +134,9 @@ class MainActivity : AppCompatActivity() {
 
         val standardAdapter = StandardAdapter(codingService, fileService, systemService, projectRepository)
         val shizukuAdapter = ShizukuAdapter()
-        val dhizukuAdapter = DhizukuAdapter()
+        dhizukuService = DhizukuService()
+        privilegeCatalogService = PrivilegeCatalogService()
+        val dhizukuAdapter = DhizukuAdapter(this, dhizukuService)
         val specialAccessAdapter = SpecialAccessAdapter()
 
         val capabilityDetector = CapabilityDetector()
@@ -167,6 +179,7 @@ class MainActivity : AppCompatActivity() {
         appendRecentAudit()
         updateMicrophonePermissionUi()
         promptForMicrophonePermissionOnFirstLaunch()
+        refreshPrivilegeCenter()
 
         createButton.setOnClickListener {
             val result = assistantEngine.executeAction(actionRegistry.createProjectRequest("assistant_demo"))
@@ -210,6 +223,15 @@ class MainActivity : AppCompatActivity() {
         grantMicPermissionButton.setOnClickListener {
             shouldStartVoiceAfterPermission = false
             audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+
+        refreshPrivilegesButton.setOnClickListener {
+            refreshPrivilegeCenter()
+            appendOutput(getString(R.string.privilege_status_refreshed))
+        }
+
+        requestDhizukuPermissionButton.setOnClickListener {
+            requestDhizukuPermission()
         }
     }
 
@@ -379,6 +401,7 @@ class MainActivity : AppCompatActivity() {
     private fun reloadVoiceConfiguration(showStatus: Boolean) {
         currentVoiceConfig = voicePreferences.load()
         voiceService.updateConfig(currentVoiceConfig)
+        capabilityState = CapabilityDetector().detect(this)
         if (currentVoiceConfig.useForegroundServiceMode && voiceEnabled) {
             voiceService.stopListening()
         }
@@ -409,6 +432,7 @@ class MainActivity : AppCompatActivity() {
         } else if (currentVoiceConfig.autoStartVoice && !voiceEnabled) {
             ensureMicPermissionAndStartVoice()
         }
+        refreshPrivilegeCenter()
     }
 
     private fun refreshVoiceButtonLabel() {
@@ -479,6 +503,28 @@ class MainActivity : AppCompatActivity() {
             shouldStartVoiceAfterPermission = false
             audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
+    }
+
+    private fun requestDhizukuPermission() {
+        dhizukuService.requestPermission(this) { granted, message ->
+            runOnUiThread {
+                appendOutput(message)
+                refreshPrivilegeCenter()
+                if (granted) {
+                    appendOutput(getString(R.string.dhizuku_permission_granted_hint))
+                }
+            }
+        }
+    }
+
+    private fun refreshPrivilegeCenter() {
+        val dhizukuStatus = dhizukuService.getStatus(this)
+        capabilityState = capabilityState.copy(dhizuku = dhizukuStatus.initialized)
+        privilegeCenterView.text = privilegeCatalogService.buildPrivilegeOverview(
+            capabilityState = capabilityState,
+            dhizukuStatus = dhizukuStatus
+        )
+        requestDhizukuPermissionButton.isEnabled = dhizukuStatus.initialized && !dhizukuStatus.permissionGranted
     }
 
     companion object {

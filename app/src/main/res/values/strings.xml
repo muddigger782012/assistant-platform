@@ -49,4 +49,9 @@
     <string name="mic_permission_status_ok">Microphone permission: granted</string>
     <string name="mic_permission_status_missing">Microphone permission: not granted</string>
     <string name="mic_permission_prompt_startup">Requesting microphone permission for voice features.</string>
+    <string name="privilege_center_title">Dhizuku &amp; Device Owner Privilege Center</string>
+    <string name="refresh_privilege_status">Refresh Privilege Status</string>
+    <string name="request_dhizuku_permission">Request Dhizuku Permission</string>
+    <string name="privilege_status_refreshed">Privilege status refreshed.</string>
+    <string name="dhizuku_permission_granted_hint">Dhizuku permission granted. Privileged features are now available if supported by the device.</string>
 </resources>

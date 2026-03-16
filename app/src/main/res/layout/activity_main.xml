@@ -70,6 +70,44 @@
         android:layout_marginTop="8dp"
         android:text="@string/voice_settings_title" />
 
+    <TextView
+        android:id="@+id/tvPrivilegeSectionTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="@string/privilege_center_title"
+        android:textStyle="bold" />
+
+    <Button
+        android:id="@+id/btnRefreshPrivileges"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/refresh_privilege_status" />
+
+    <Button
+        android:id="@+id/btnRequestDhizukuPermission"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/request_dhizuku_permission" />
+
+    <ScrollView
+        android:id="@+id/svPrivilegeCenter"
+        android:layout_width="match_parent"
+        android:layout_height="170dp"
+        android:layout_marginTop="8dp"
+        android:background="#10000000"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/tvPrivilegeCenter"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textIsSelectable="true"
+            android:textSize="12sp" />
+    </ScrollView>
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"

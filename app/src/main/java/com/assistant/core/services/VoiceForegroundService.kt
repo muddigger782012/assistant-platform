@@ -87,7 +87,7 @@ class VoiceForegroundService : Service() {
         val auditService = AuditService(auditRepository)
         val standardAdapter = StandardAdapter(codingService, fileService, systemService, projectRepository)
         val shizukuAdapter = ShizukuAdapter()
-        val dhizukuAdapter = DhizukuAdapter()
+        val dhizukuAdapter = DhizukuAdapter(this, DhizukuService())
         val specialAccessAdapter = SpecialAccessAdapter()
         capabilityState = CapabilityDetector().detect(this)
 
