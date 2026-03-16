@@ -56,7 +56,7 @@
     <string name="dhizuku_permission_granted_hint">Dhizuku permission granted. Privileged features are now available if supported by the device.</string>
     <string name="output_log_title">Assistant Output Log</string>
     <string name="project_tab_hint">Creates assistant_demo/main.py in app-local storage and logs result.</string>
-    <string name="shizuku_command_hint">Shell command for Shizuku test (example: id)</string>
+    <string name="shizuku_command_hint">Shizuku command (example: id or .rish -c \"id\")</string>
     <string name="permissions_tab_title">Android Permissions Center</string>
     <string name="request_all_runtime_permissions">Request All Runtime Permissions</string>
     <string name="request_all_special_permissions">Request All Special Permissions</string>

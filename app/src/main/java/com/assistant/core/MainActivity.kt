@@ -180,7 +180,7 @@ class MainActivity : AppCompatActivity() {
         auditService = AuditService(auditRepository)
 
         val standardAdapter = StandardAdapter(codingService, fileService, systemService, projectRepository)
-        val shizukuAdapter = ShizukuAdapter()
+        val shizukuAdapter = ShizukuAdapter(this)
         dhizukuService = DhizukuService()
         privilegeCatalogService = PrivilegeCatalogService()
         val dhizukuAdapter = DhizukuAdapter(this, dhizukuService)
