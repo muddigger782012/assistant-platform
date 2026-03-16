@@ -90,6 +90,7 @@
     <string name="tab_terminal">Terminal</string>
     <string name="tab_permissions">Permissions</string>
     <string name="tab_dhizuku">Dhizuku / DO</string>
+    <string name="tab_audit">Audit Debug</string>
     <string name="terminal_tab_title">Shizuku Terminal</string>
     <string name="terminal_command_hint">Enter command (supports .rish -c \"...\")</string>
     <string name="terminal_run_command">Run Command</string>
@@ -99,4 +100,12 @@
     <string name="terminal_history_title">Command History</string>
     <string name="run_assistant_command">Run Assistant Command</string>
     <string name="assistant_quick_status">Quick Status</string>
+    <string name="audit_tab_title">Detailed Audit Log Debugger</string>
+    <string name="audit_limit_hint">Limit (e.g. 100)</string>
+    <string name="audit_status_filter_hint">Status filter (e.g. SUCCESS)</string>
+    <string name="audit_adapter_filter_hint">Adapter filter (e.g. SHIZUKU)</string>
+    <string name="audit_refresh_logs">Refresh Logs</string>
+    <string name="audit_clear_view">Clear View</string>
+    <string name="audit_copy_logs">Copy Logs</string>
+    <string name="audit_output_title">Audit Log Output</string>
 </resources>

@@ -237,6 +237,92 @@
         </ScrollView>
 
         <ScrollView
+            android:id="@+id/tabAuditSection"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/audit_tab_title"
+                    android:textStyle="bold" />
+
+                <EditText
+                    android:id="@+id/etAuditLimit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="@string/audit_limit_hint"
+                    android:inputType="number"
+                    android:minHeight="48dp"
+                    android:text="100" />
+
+                <EditText
+                    android:id="@+id/etAuditStatusFilter"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="@string/audit_status_filter_hint"
+                    android:inputType="text"
+                    android:minHeight="48dp" />
+
+                <EditText
+                    android:id="@+id/etAuditAdapterFilter"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:hint="@string/audit_adapter_filter_hint"
+                    android:inputType="text"
+                    android:minHeight="48dp" />
+
+                <Button
+                    android:id="@+id/btnAuditRefresh"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/audit_refresh_logs" />
+
+                <Button
+                    android:id="@+id/btnAuditCopy"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/audit_copy_logs" />
+
+                <Button
+                    android:id="@+id/btnAuditClearView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/audit_clear_view" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/audit_output_title"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvAuditDebugOutput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="#10000000"
+                    android:padding="8dp"
+                    android:textIsSelectable="true"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </ScrollView>
+
+        <ScrollView
             android:id="@+id/tabVoiceSection"
             android:layout_width="match_parent"
             android:layout_height="match_parent"

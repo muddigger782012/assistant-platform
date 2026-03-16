@@ -3,6 +3,8 @@ package com.assistant.core
 import android.Manifest
 import android.app.AlarmManager
 import android.app.AppOpsManager
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.app.NotificationManager
 import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
@@ -63,6 +65,9 @@ import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.tabs.TabLayout
 import com.rosan.dhizuku.api.Dhizuku
 import rikka.shizuku.Shizuku
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -74,6 +79,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var specialPermissionsStatus: TextView
     private lateinit var terminalOutputView: TextView
     private lateinit var terminalHistoryView: TextView
+    private lateinit var auditDebugOutput: TextView
     private lateinit var micPermissionStatusView: TextView
     private lateinit var grantMicPermissionButton: Button
     private lateinit var privilegeCenterView: TextView
@@ -83,6 +89,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var terminalRunButton: Button
     private lateinit var terminalStopButton: Button
     private lateinit var terminalClearButton: Button
+    private lateinit var auditRefreshButton: Button
+    private lateinit var auditClearViewButton: Button
+    private lateinit var auditCopyButton: Button
+    private lateinit var auditLimitInput: EditText
+    private lateinit var auditStatusFilterInput: EditText
+    private lateinit var auditAdapterFilterInput: EditText
 
     private lateinit var voiceButton: Button
     private lateinit var settingsButton: Button
@@ -250,6 +262,7 @@ class MainActivity : AppCompatActivity() {
         appendOutput("Startup capability status:\n${systemService.buildStatusSummary(capabilityState)}")
         appendOutput(getString(R.string.voice_hint))
         appendRecentAudit()
+        refreshAuditDebugSection()
     }
 
     private fun initViews() {
@@ -260,6 +273,7 @@ class MainActivity : AppCompatActivity() {
             findViewById(R.id.tabShizukuSection),
             findViewById(R.id.tabStatusSection),
             findViewById(R.id.tabTerminalSection),
+            findViewById(R.id.tabAuditSection),
             findViewById(R.id.tabVoiceSection),
             findViewById(R.id.tabPermissionsSection),
             findViewById(R.id.tabDhizukuSection)
@@ -273,6 +287,7 @@ class MainActivity : AppCompatActivity() {
         specialPermissionsStatus = findViewById(R.id.tvSpecialPermissionsStatus)
         terminalOutputView = findViewById(R.id.tvTerminalOutput)
         terminalHistoryView = findViewById(R.id.tvTerminalHistory)
+        auditDebugOutput = findViewById(R.id.tvAuditDebugOutput)
         micPermissionStatusView = findViewById(R.id.tvMicPermissionStatus)
         grantMicPermissionButton = findViewById(R.id.btnGrantMicPermission)
         privilegeCenterView = findViewById(R.id.tvPrivilegeCenter)
@@ -282,6 +297,12 @@ class MainActivity : AppCompatActivity() {
         terminalRunButton = findViewById(R.id.btnTerminalRunCommand)
         terminalStopButton = findViewById(R.id.btnTerminalStopCommand)
         terminalClearButton = findViewById(R.id.btnTerminalClearOutput)
+        auditRefreshButton = findViewById(R.id.btnAuditRefresh)
+        auditClearViewButton = findViewById(R.id.btnAuditClearView)
+        auditCopyButton = findViewById(R.id.btnAuditCopy)
+        auditLimitInput = findViewById(R.id.etAuditLimit)
+        auditStatusFilterInput = findViewById(R.id.etAuditStatusFilter)
+        auditAdapterFilterInput = findViewById(R.id.etAuditAdapterFilter)
 
         voiceButton = findViewById(R.id.btnToggleVoice)
         settingsButton = findViewById(R.id.btnVoiceSettings)
@@ -313,6 +334,7 @@ class MainActivity : AppCompatActivity() {
             getString(R.string.tab_shizuku),
             getString(R.string.tab_status),
             getString(R.string.tab_terminal),
+            getString(R.string.tab_audit),
             getString(R.string.tab_voice),
             getString(R.string.tab_permissions),
             getString(R.string.tab_dhizuku)
@@ -363,6 +385,17 @@ class MainActivity : AppCompatActivity() {
             terminalOutputLines.clear()
             terminalOutputView.text = ""
             appendOutput("Terminal output cleared.")
+        }
+        auditRefreshButton.setOnClickListener {
+            refreshAuditDebugSection()
+            appendOutput("Audit debug logs refreshed.")
+        }
+        auditClearViewButton.setOnClickListener {
+            auditDebugOutput.text = ""
+            appendOutput("Audit debug view cleared.")
+        }
+        auditCopyButton.setOnClickListener {
+            copyAuditLogsToClipboard()
         }
 
         findViewById<Button>(R.id.btnShowStatus).setOnClickListener {
@@ -443,6 +476,47 @@ class MainActivity : AppCompatActivity() {
             }
             appendOutput("Recent audit logs:\n$rendered")
         }
+    }
+
+    private fun refreshAuditDebugSection() {
+        val limit = auditLimitInput.text?.toString()?.toIntOrNull()?.coerceIn(1, 500) ?: 100
+        val statusFilter = auditStatusFilterInput.text?.toString()?.trim().orEmpty()
+        val adapterFilter = auditAdapterFilterInput.text?.toString()?.trim().orEmpty()
+        val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+
+        val entries = auditService.getRecentEntries(limit)
+            .filter {
+                statusFilter.isBlank() || (it.status ?: "").contains(statusFilter, ignoreCase = true)
+            }
+            .filter {
+                adapterFilter.isBlank() || (it.adapterUsed ?: "").contains(adapterFilter, ignoreCase = true)
+            }
+
+        auditDebugOutput.text = if (entries.isEmpty()) {
+            "No audit entries match current filters."
+        } else {
+            entries.joinToString(separator = "\n\n") { entry ->
+                buildString {
+                    appendLine("id: ${entry.id}")
+                    appendLine("actionId: ${entry.actionId ?: "N/A"}")
+                    appendLine("time: ${formatter.format(Date(entry.createdAt))}")
+                    appendLine("status: ${entry.status ?: "UNKNOWN"}")
+                    appendLine("adapter: ${entry.adapterUsed ?: "N/A"}")
+                    append("message: ${entry.message ?: ""}")
+                }
+            }
+        }
+    }
+
+    private fun copyAuditLogsToClipboard() {
+        val text = auditDebugOutput.text?.toString().orEmpty()
+        if (text.isBlank()) {
+            appendOutput("Audit debug output is empty; nothing copied.")
+            return
+        }
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("audit_logs", text))
+        appendOutput("Audit debug logs copied to clipboard.")
     }
 
     private fun appendOutput(text: String) {
@@ -1065,6 +1139,7 @@ class MainActivity : AppCompatActivity() {
         reloadVoiceConfiguration(showStatus = false)
         updateMicrophonePermissionUi()
         refreshSpecialPermissionsStatus()
+        refreshAuditDebugSection()
     }
 
     override fun onDestroy() {
