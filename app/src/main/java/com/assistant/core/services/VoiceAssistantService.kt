@@ -48,6 +48,8 @@ class VoiceAssistantService(
     private var ttsReady = false
     private var porcupineManager: PorcupineManager? = null
     private var lastWakeEngineUsed = HotwordEngine.SPEECH_FALLBACK
+    private var fallbackErrorStreak = 0
+    private var fallbackStatusAnnounced = false
     private var config: VoiceConfig = VoiceConfig(
         enableDedicatedWakeWord = true,
         porcupineAccessKey = "",
@@ -85,6 +87,8 @@ class VoiceAssistantService(
         voiceActive = true
         mode = RecognitionMode.FALLBACK_SPEECH_HOTWORD
         mainHandler.removeCallbacksAndMessages(null)
+        fallbackErrorStreak = 0
+        fallbackStatusAnnounced = false
 
         if (shouldUseDedicatedWakeWord()) {
             startDedicatedWakeWordEngine()
@@ -141,7 +145,7 @@ class VoiceAssistantService(
         if (!voiceActive) return
 
         when (mode) {
-            RecognitionMode.FALLBACK_SPEECH_HOTWORD -> scheduleFallbackHotwordListening(600)
+            RecognitionMode.FALLBACK_SPEECH_HOTWORD -> scheduleFallbackAfterError(error)
             RecognitionMode.COMMAND -> {
                 onStatus("Command capture error. Returning to wake-word listening.")
                 resumeHotwordEngineAfterCommand()
@@ -221,17 +225,18 @@ class VoiceAssistantService(
 
     private fun switchToSpeechHotwordFallback(reason: String) {
         currentHotwordEngine = HotwordEngine.SPEECH_FALLBACK
-        onStatus(reason)
+        onStatus("$reason Using speech fallback wake-word mode.")
         if (!isRecognitionAvailable()) {
             onStatus("Speech recognition is unavailable on this device.")
             return
         }
         mode = RecognitionMode.FALLBACK_SPEECH_HOTWORD
-        scheduleFallbackHotwordListening(150)
+        scheduleFallbackHotwordListening(1500)
     }
 
     private fun onWakeWordDetected() {
         if (!voiceActive) return
+        fallbackErrorStreak = 0
         lastWakeEngineUsed = currentHotwordEngine
         onHotwordDetected()
         speak("Yes?")
@@ -259,7 +264,8 @@ class VoiceAssistantService(
         if (containsJarvis(matches)) {
             onWakeWordDetected()
         } else {
-            scheduleFallbackHotwordListening(300)
+            fallbackErrorStreak = 0
+            scheduleFallbackHotwordListening(6000)
         }
     }
 
@@ -287,7 +293,7 @@ class VoiceAssistantService(
             startDedicatedWakeWordEngine()
         } else {
             mode = RecognitionMode.FALLBACK_SPEECH_HOTWORD
-            scheduleFallbackHotwordListening(350)
+            scheduleFallbackHotwordListening(5000)
         }
     }
 
@@ -306,14 +312,15 @@ class VoiceAssistantService(
 
     private fun scheduleFallbackHotwordListening(delayMs: Long) {
         if (!voiceActive || mode != RecognitionMode.FALLBACK_SPEECH_HOTWORD) return
+        val safeDelay = delayMs.coerceAtLeast(2500L)
         mainHandler.postDelayed(
             {
                 startSpeechRecognizer(
                     prompt = "Say jarvis",
-                    preferOffline = true
+                    preferOffline = false
                 )
             },
-            delayMs
+            safeDelay
         )
     }
 
@@ -331,10 +338,32 @@ class VoiceAssistantService(
         listeningWithSpeechRecognizer = true
         recognizer.startListening(intent)
         if (mode == RecognitionMode.FALLBACK_SPEECH_HOTWORD) {
-            onStatus("Listening for hotword: jarvis")
+            if (!fallbackStatusAnnounced) {
+                onStatus("Speech fallback hotword mode active. Configure Porcupine AccessKey to reduce beeps.")
+                fallbackStatusAnnounced = true
+            }
         } else {
             onStatus("Hotword detected. Listening for command...")
         }
+    }
+
+    private fun scheduleFallbackAfterError(error: Int) {
+        fallbackErrorStreak += 1
+        val baseDelay = when (error) {
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 7000L
+            SpeechRecognizer.ERROR_NO_MATCH -> 6500L
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 12000L
+            SpeechRecognizer.ERROR_CLIENT -> 12000L
+            SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> 15000L
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> 30000L
+            else -> 9000L
+        }
+        val penaltyDelay = if (fallbackErrorStreak >= 4) 20000L else 0L
+        val delay = (baseDelay + penaltyDelay).coerceAtMost(60000L)
+        if (fallbackErrorStreak == 4) {
+            onStatus("Reducing wake-word retries to avoid constant beeping.")
+        }
+        scheduleFallbackHotwordListening(delay)
     }
 
     private fun applyJarvisStyleVoiceProfile() {

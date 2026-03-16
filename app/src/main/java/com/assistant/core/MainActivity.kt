@@ -578,6 +578,9 @@ class MainActivity : AppCompatActivity() {
     private fun startVoiceHotwordMode() {
         shouldStartVoiceAfterPermission = false
         pendingClarification = null
+        if (currentVoiceConfig.enableDedicatedWakeWord && currentVoiceConfig.porcupineAccessKey.isBlank()) {
+            appendOutput("Porcupine AccessKey is not configured; using speech fallback mode.")
+        }
         if (currentVoiceConfig.useForegroundServiceMode) {
             VoiceForegroundService.start(this)
             voiceEnabled = true
