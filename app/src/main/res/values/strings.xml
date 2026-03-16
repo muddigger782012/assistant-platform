@@ -44,4 +44,9 @@
     <string name="custom_start_voice_phrases_label">Custom start-voice triggers (comma-separated)</string>
     <string name="custom_stop_voice_phrases_label">Custom stop-voice triggers (comma-separated)</string>
     <string name="custom_phrases_hint">example one, example two</string>
+    <string name="voice_controls_title">Voice Controls</string>
+    <string name="grant_microphone_permission">Grant Microphone Permission</string>
+    <string name="mic_permission_status_ok">Microphone permission: granted</string>
+    <string name="mic_permission_status_missing">Microphone permission: not granted</string>
+    <string name="mic_permission_prompt_startup">Requesting microphone permission for voice features.</string>
 </resources>

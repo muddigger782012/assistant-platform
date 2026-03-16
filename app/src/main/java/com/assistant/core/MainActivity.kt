@@ -47,6 +47,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var commandInput: EditText
     private lateinit var outputLog: TextView
+    private lateinit var micPermissionStatusView: TextView
+    private lateinit var grantMicPermissionButton: Button
 
     private lateinit var actionRegistry: ActionRegistry
     private lateinit var assistantEngine: AssistantEngine
@@ -63,6 +65,7 @@ class MainActivity : AppCompatActivity() {
     private var shouldStartVoiceAfterPermission = false
     private var receiverRegistered = false
     private var pendingClarification: String? = null
+    private val uiPreferences by lazy { getSharedPreferences("main_ui", MODE_PRIVATE) }
 
     private val outputLines = mutableListOf<String>()
     private val voiceEventReceiver = object : BroadcastReceiver() {
@@ -79,12 +82,14 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
+            updateMicrophonePermissionUi()
             if (shouldStartVoiceAfterPermission) {
                 startVoiceHotwordMode()
             }
         } else {
             appendOutput(getString(R.string.voice_permission_required))
             shouldStartVoiceAfterPermission = false
+            updateMicrophonePermissionUi()
         }
     }
     private val voiceSettingsLauncher = registerForActivityResult(
@@ -99,6 +104,8 @@ class MainActivity : AppCompatActivity() {
 
         commandInput = findViewById(R.id.etCommandInput)
         outputLog = findViewById(R.id.tvOutputLog)
+        micPermissionStatusView = findViewById(R.id.tvMicPermissionStatus)
+        grantMicPermissionButton = findViewById(R.id.btnGrantMicPermission)
         val createButton: Button = findViewById(R.id.btnCreateProject)
         val shizukuButton: Button = findViewById(R.id.btnRunShizuku)
         val statusButton: Button = findViewById(R.id.btnShowStatus)
@@ -158,6 +165,8 @@ class MainActivity : AppCompatActivity() {
         appendOutput("Startup capability status:\n${systemService.buildStatusSummary(capabilityState)}")
         appendOutput(getString(R.string.voice_hint))
         appendRecentAudit()
+        updateMicrophonePermissionUi()
+        promptForMicrophonePermissionOnFirstLaunch()
 
         createButton.setOnClickListener {
             val result = assistantEngine.executeAction(actionRegistry.createProjectRequest("assistant_demo"))
@@ -196,6 +205,11 @@ class MainActivity : AppCompatActivity() {
 
         settingsButton.setOnClickListener {
             openVoiceSettings()
+        }
+
+        grantMicPermissionButton.setOnClickListener {
+            shouldStartVoiceAfterPermission = false
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
@@ -345,6 +359,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         reloadVoiceConfiguration(showStatus = false)
+        updateMicrophonePermissionUi()
     }
 
     override fun onStart() {
@@ -437,5 +452,36 @@ class MainActivity : AppCompatActivity() {
             .replace(Regex("[^a-z0-9\\s]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
+    }
+
+    private fun hasMicrophonePermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun updateMicrophonePermissionUi() {
+        val granted = hasMicrophonePermission()
+        micPermissionStatusView.text = if (granted) {
+            getString(R.string.mic_permission_status_ok)
+        } else {
+            getString(R.string.mic_permission_status_missing)
+        }
+        grantMicPermissionButton.isEnabled = !granted
+    }
+
+    private fun promptForMicrophonePermissionOnFirstLaunch() {
+        val alreadyPrompted = uiPreferences.getBoolean(KEY_PROMPTED_MIC_PERMISSION, false)
+        if (!alreadyPrompted && !hasMicrophonePermission()) {
+            uiPreferences.edit().putBoolean(KEY_PROMPTED_MIC_PERMISSION, true).apply()
+            appendOutput(getString(R.string.mic_permission_prompt_startup))
+            shouldStartVoiceAfterPermission = false
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    companion object {
+        private const val KEY_PROMPTED_MIC_PERMISSION = "prompted_mic_permission"
     }
 }
