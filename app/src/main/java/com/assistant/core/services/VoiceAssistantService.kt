@@ -15,11 +15,18 @@ import ai.picovoice.porcupine.PorcupineException
 import ai.picovoice.porcupine.PorcupineManager
 import java.util.Locale
 
+data class VoiceRecognitionResult(
+    val transcript: String,
+    val confidence: Float,
+    val alternatives: List<String>,
+    val sourceEngine: VoiceAssistantService.HotwordEngine
+)
+
 class VoiceAssistantService(
     private val context: Context,
     private val onStatus: (String) -> Unit,
     private val onHotwordDetected: () -> Unit,
-    private val onCommandDetected: (String) -> Unit
+    private val onCommandDetected: (VoiceRecognitionResult) -> Unit
 ) : RecognitionListener, TextToSpeech.OnInitListener {
 
     private enum class RecognitionMode {
@@ -40,12 +47,24 @@ class VoiceAssistantService(
     private var tts: TextToSpeech = TextToSpeech(context, this)
     private var ttsReady = false
     private var porcupineManager: PorcupineManager? = null
+    private var lastWakeEngineUsed = HotwordEngine.SPEECH_FALLBACK
     private var config: VoiceConfig = VoiceConfig(
         enableDedicatedWakeWord = true,
         porcupineAccessKey = "",
         wakeSensitivity = 0.6f,
         autoStartVoice = false,
-        preferOfflineCommandRecognition = true
+        preferOfflineCommandRecognition = true,
+        commandConfidenceThreshold = 0.58f,
+        defaultProjectName = "assistant_demo",
+        useForegroundServiceMode = false,
+        autoStartForegroundService = false,
+        customProjectPhrases = "",
+        customStatusPhrases = "",
+        customShellPhrases = "",
+        customRebootPhrases = "",
+        customSettingsPhrases = "",
+        customStartVoicePhrases = "",
+        customStopVoicePhrases = ""
     )
     private var currentHotwordEngine = HotwordEngine.SPEECH_FALLBACK
 
@@ -133,9 +152,10 @@ class VoiceAssistantService(
     override fun onResults(results: Bundle?) {
         listeningWithSpeechRecognizer = false
         val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+        val confidenceScores = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
         when (mode) {
             RecognitionMode.FALLBACK_SPEECH_HOTWORD -> handleFallbackHotwordMatches(matches)
-            RecognitionMode.COMMAND -> handleCommandMatches(matches)
+            RecognitionMode.COMMAND -> handleCommandMatches(matches, confidenceScores)
         }
     }
 
@@ -212,6 +232,7 @@ class VoiceAssistantService(
 
     private fun onWakeWordDetected() {
         if (!voiceActive) return
+        lastWakeEngineUsed = currentHotwordEngine
         onHotwordDetected()
         speak("Yes?")
         if (currentHotwordEngine == HotwordEngine.DEDICATED_OFFLINE) {
@@ -242,13 +263,20 @@ class VoiceAssistantService(
         }
     }
 
-    private fun handleCommandMatches(matches: List<String>) {
+    private fun handleCommandMatches(matches: List<String>, confidenceScores: FloatArray?) {
         if (!voiceActive) return
-        val command = matches.firstOrNull { it.isNotBlank() }?.trim()
+        val command = matches.firstOrNull { it.isNotBlank() }?.trim().orEmpty()
         if (command.isNullOrBlank()) {
             onStatus("No command detected after hotword.")
         } else {
-            onCommandDetected(command)
+            onCommandDetected(
+                VoiceRecognitionResult(
+                    transcript = command,
+                    confidence = normalizeConfidence(confidenceScores?.getOrNull(0)),
+                    alternatives = matches.filter { it.isNotBlank() },
+                    sourceEngine = lastWakeEngineUsed
+                )
+            )
         }
         resumeHotwordEngineAfterCommand()
     }
@@ -352,5 +380,10 @@ class VoiceAssistantService(
         }
 
         return candidates.maxByOrNull { it.score() }
+    }
+
+    private fun normalizeConfidence(raw: Float?): Float {
+        if (raw == null || raw < 0f) return 0.5f
+        return raw.coerceIn(0f, 1f)
     }
 }
