@@ -5,7 +5,7 @@ import com.assistant.core.engine.ActionRegistry
 import com.assistant.core.models.ActionRequest
 import com.assistant.core.models.ActionResult
 import com.assistant.core.models.CapabilityState
-import dev.rikka.shizuku.Shizuku
+import rikka.shizuku.Shizuku
 
 class ShizukuAdapter {
 

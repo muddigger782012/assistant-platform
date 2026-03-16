@@ -3,7 +3,7 @@ package com.assistant.core.engine
 import android.app.admin.DevicePolicyManager
 import android.content.Context
 import com.assistant.core.models.CapabilityState
-import dev.rikka.shizuku.Shizuku
+import rikka.shizuku.Shizuku
 
 class CapabilityDetector {
 
