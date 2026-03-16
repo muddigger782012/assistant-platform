@@ -9,6 +9,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AssistantPlatform">
         <activity
+            android:name=".VoiceSettingsActivity"
+            android:exported="false" />
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
