@@ -13,7 +13,8 @@ class ShizukuAdapter(
 
     private val shellService = ShizukuShellService(context)
 
-    fun execute(actionRequest: ActionRequest, _capabilityState: CapabilityState): ActionResult {
+    @Suppress("UNUSED_PARAMETER")
+    fun execute(actionRequest: ActionRequest, capabilityState: CapabilityState): ActionResult {
         if (actionRequest.actionType != ActionRegistry.RUN_SHELL) {
             return ActionResult(
                 id = actionRequest.id,
