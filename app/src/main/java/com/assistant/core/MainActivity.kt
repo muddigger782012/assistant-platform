@@ -534,10 +534,6 @@ class MainActivity : AppCompatActivity() {
             appendTerminalOutput("[!] A command is already running. Stop it first.")
             return
         }
-        if (!isShizukuReadyForTerminal()) {
-            appendTerminalOutput("[!] Shizuku unavailable or permission not granted.")
-            return
-        }
 
         val rawCommand = terminalCommandInput.text?.toString()?.trim().orEmpty().ifBlank { "id" }
         val parsed = shizukuShellService.parseRishCommand(rawCommand)
@@ -556,23 +552,29 @@ class MainActivity : AppCompatActivity() {
         refreshTerminalHistory()
         appendTerminalOutput("$ $rawCommand")
 
-        runningTerminalCommand = shizukuShellService.runStreaming(
-            parsed = parsed,
-            onStdout = { line -> runOnUiThread { appendTerminalOutput(line) } },
-            onStderr = { line -> runOnUiThread { appendTerminalOutput("[err] $line") } },
-            onCompleted = { exitCode, timedOut ->
-                runOnUiThread {
-                    appendTerminalOutput("[exit=$exitCode timedOut=$timedOut]")
-                    runningTerminalCommand = null
+        try {
+            runningTerminalCommand = shizukuShellService.runStreaming(
+                parsed = parsed,
+                onStdout = { line -> runOnUiThread { appendTerminalOutput(line) } },
+                onStderr = { line -> runOnUiThread { appendTerminalOutput("[err] $line") } },
+                onCompleted = { exitCode, timedOut ->
+                    runOnUiThread {
+                        appendTerminalOutput("[exit=$exitCode timedOut=$timedOut]")
+                        runningTerminalCommand = null
+                    }
+                },
+                onError = { message ->
+                    runOnUiThread {
+                        appendTerminalOutput("[error] $message")
+                        appendTerminalOutput("[i] ${buildShizukuStateSummary()}")
+                        runningTerminalCommand = null
+                    }
                 }
-            },
-            onError = { message ->
-                runOnUiThread {
-                    appendTerminalOutput("[error] $message")
-                    runningTerminalCommand = null
-                }
-            }
-        )
+            )
+        } catch (error: Throwable) {
+            appendTerminalOutput("[error] ${error.message ?: "Unable to start Shizuku command."}")
+            appendTerminalOutput("[i] ${buildShizukuStateSummary()}")
+        }
     }
 
     private fun stopTerminalCommand() {
@@ -590,18 +592,18 @@ class MainActivity : AppCompatActivity() {
         terminalHistoryView.text = terminalHistory.joinToString(separator = "\n")
     }
 
-    private fun isShizukuReadyForTerminal(): Boolean {
+    private fun buildShizukuStateSummary(): String {
         val binderReady = try {
             Shizuku.pingBinder()
         } catch (_: Throwable) {
             false
         }
-        if (!binderReady) return false
-        return try {
-            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-        } catch (_: Throwable) {
-            false
+        val permissionState = try {
+            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) "granted" else "denied"
+        } catch (error: Throwable) {
+            "unknown (${error.message ?: "error"})"
         }
+        return "Shizuku state -> binderReady=$binderReady, permission=$permissionState."
     }
 
     private fun handleVoiceRecognition(recognition: VoiceRecognitionResult) {

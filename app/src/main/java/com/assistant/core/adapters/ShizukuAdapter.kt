@@ -1,13 +1,11 @@
 package com.assistant.core.adapters
 
 import android.content.Context
-import android.content.pm.PackageManager
 import com.assistant.core.engine.ActionRegistry
 import com.assistant.core.models.ActionRequest
 import com.assistant.core.models.ActionResult
 import com.assistant.core.models.CapabilityState
 import com.assistant.core.services.ShizukuShellService
-import rikka.shizuku.Shizuku
 
 class ShizukuAdapter(
     context: Context
@@ -15,47 +13,13 @@ class ShizukuAdapter(
 
     private val shellService = ShizukuShellService(context)
 
-    fun isAvailable(): Boolean {
-        return try {
-            Shizuku.pingBinder()
-        } catch (_: Throwable) {
-            false
-        }
-    }
-
-    fun hasPermission(): Boolean {
-        return try {
-            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-        } catch (_: Throwable) {
-            false
-        }
-    }
-
-    fun execute(actionRequest: ActionRequest, capabilityState: CapabilityState): ActionResult {
+    fun execute(actionRequest: ActionRequest, _capabilityState: CapabilityState): ActionResult {
         if (actionRequest.actionType != ActionRegistry.RUN_SHELL) {
             return ActionResult(
                 id = actionRequest.id,
                 success = false,
                 adapterUsed = "SHIZUKU",
                 message = "Unsupported action for ShizukuAdapter: ${actionRequest.actionType}"
-            )
-        }
-
-        if (!capabilityState.shizuku || !isAvailable()) {
-            return ActionResult(
-                id = actionRequest.id,
-                success = false,
-                adapterUsed = "SHIZUKU",
-                message = "Shizuku unavailable on this device."
-            )
-        }
-
-        if (!hasPermission()) {
-            return ActionResult(
-                id = actionRequest.id,
-                success = false,
-                adapterUsed = "SHIZUKU",
-                message = "Shizuku permission not granted. Please allow in Shizuku manager."
             )
         }
 
@@ -103,6 +67,15 @@ class ShizukuAdapter(
                         appendLine(shellResult.stderr.trim())
                     }
                 }.trim()
+            )
+        } catch (error: SecurityException) {
+            val helperPath = shellService.ensureRishHelperFile().absolutePath
+            ActionResult(
+                id = actionRequest.id,
+                success = false,
+                adapterUsed = "SHIZUKU",
+                message = "Shizuku permission denied. Open Shizuku manager and grant this app permission.",
+                output = "rish helper file: $helperPath"
             )
         } catch (error: Throwable) {
             val helperPath = shellService.ensureRishHelperFile().absolutePath
