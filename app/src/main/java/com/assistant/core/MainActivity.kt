@@ -74,6 +74,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var commandInput: EditText
     private lateinit var shizukuCommandInput: EditText
     private lateinit var terminalCommandInput: EditText
+    private lateinit var shizukuRuntimeStatusView: TextView
     private lateinit var outputLog: TextView
     private lateinit var statusOutput: TextView
     private lateinit var specialPermissionsStatus: TextView
@@ -89,6 +90,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var terminalRunButton: Button
     private lateinit var terminalStopButton: Button
     private lateinit var terminalClearButton: Button
+    private lateinit var refreshShizukuStatusButton: Button
+    private lateinit var openShizukuAppButton: Button
+    private lateinit var requestShizukuPermissionButton: Button
     private lateinit var auditRefreshButton: Button
     private lateinit var auditClearViewButton: Button
     private lateinit var auditCopyButton: Button
@@ -147,8 +151,36 @@ class MainActivity : AppCompatActivity() {
     private var voiceEnabled = false
     private var shouldStartVoiceAfterPermission = false
     private var receiverRegistered = false
+    private var shizukuListenersRegistered = false
     private var pendingClarification: String? = null
     private var runningTerminalCommand: RunningShizukuCommand? = null
+
+    private val shizukuBinderReceivedListener = Shizuku.OnBinderReceivedListener {
+        runOnUiThread {
+            appendOutput("Shizuku binder connected.")
+            refreshShizukuRuntimeStatus()
+        }
+    }
+
+    private val shizukuBinderDeadListener = Shizuku.OnBinderDeadListener {
+        runOnUiThread {
+            appendOutput("Shizuku binder disconnected.")
+            refreshShizukuRuntimeStatus()
+        }
+    }
+
+    private val shizukuPermissionResultListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+        if (requestCode == SHIZUKU_PERMISSION_REQUEST_CODE) {
+            runOnUiThread {
+                if (grantResult == PackageManager.PERMISSION_GRANTED) {
+                    appendOutput("Shizuku permission granted.")
+                } else {
+                    appendOutput("Shizuku permission denied.")
+                }
+                refreshShizukuRuntimeStatus()
+            }
+        }
+    }
 
     private val voiceEventReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -256,6 +288,7 @@ class MainActivity : AppCompatActivity() {
         reloadVoiceConfiguration(showStatus = true)
         refreshPrivilegeCenter()
         refreshSpecialPermissionsStatus()
+        refreshShizukuRuntimeStatus()
         updateMicrophonePermissionUi()
         promptForMicrophonePermissionOnFirstLaunch()
 
@@ -282,6 +315,7 @@ class MainActivity : AppCompatActivity() {
         commandInput = findViewById(R.id.etCommandInput)
         shizukuCommandInput = findViewById(R.id.etShizukuCommand)
         terminalCommandInput = findViewById(R.id.etTerminalCommand)
+        shizukuRuntimeStatusView = findViewById(R.id.tvShizukuRuntimeStatus)
         outputLog = findViewById(R.id.tvOutputLog)
         statusOutput = findViewById(R.id.tvStatusOutput)
         specialPermissionsStatus = findViewById(R.id.tvSpecialPermissionsStatus)
@@ -297,6 +331,9 @@ class MainActivity : AppCompatActivity() {
         terminalRunButton = findViewById(R.id.btnTerminalRunCommand)
         terminalStopButton = findViewById(R.id.btnTerminalStopCommand)
         terminalClearButton = findViewById(R.id.btnTerminalClearOutput)
+        refreshShizukuStatusButton = findViewById(R.id.btnRefreshShizukuStatus)
+        openShizukuAppButton = findViewById(R.id.btnOpenShizukuApp)
+        requestShizukuPermissionButton = findViewById(R.id.btnRequestShizukuPermission)
         auditRefreshButton = findViewById(R.id.btnAuditRefresh)
         auditClearViewButton = findViewById(R.id.btnAuditClearView)
         auditCopyButton = findViewById(R.id.btnAuditCopy)
@@ -373,10 +410,26 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnRunShizuku).setOnClickListener {
+            if (!ensureShizukuReadyForExecution(::appendOutput)) {
+                return@setOnClickListener
+            }
             val command = shizukuCommandInput.text?.toString()?.trim().orEmpty().ifBlank { "id" }
             val result = assistantEngine.executeAction(actionRegistry.runShellRequest(command = command, confirmed = true))
             appendActionResult(result)
             appendRecentAudit()
+        }
+
+        refreshShizukuStatusButton.setOnClickListener {
+            refreshShizukuRuntimeStatus()
+            appendOutput("Shizuku runtime status refreshed.")
+        }
+
+        openShizukuAppButton.setOnClickListener {
+            openShizukuApp()
+        }
+
+        requestShizukuPermissionButton.setOnClickListener {
+            requestShizukuPermission()
         }
 
         terminalRunButton.setOnClickListener { runTerminalCommand() }
@@ -534,6 +587,9 @@ class MainActivity : AppCompatActivity() {
             appendTerminalOutput("[!] A command is already running. Stop it first.")
             return
         }
+        if (!ensureShizukuReadyForExecution(::appendTerminalOutput)) {
+            return
+        }
 
         val rawCommand = terminalCommandInput.text?.toString()?.trim().orEmpty().ifBlank { "id" }
         val parsed = shizukuShellService.parseRishCommand(rawCommand)
@@ -592,16 +648,94 @@ class MainActivity : AppCompatActivity() {
         terminalHistoryView.text = terminalHistory.joinToString(separator = "\n")
     }
 
-    private fun buildShizukuStateSummary(): String {
-        val binderReady = try {
+    private fun refreshShizukuRuntimeStatus() {
+        val binderReady = isShizukuBinderReady()
+        val permissionState = getShizukuPermissionState()
+        val permissionLabel = when (permissionState) {
+            PackageManager.PERMISSION_GRANTED -> "granted"
+            PackageManager.PERMISSION_DENIED -> "denied"
+            null -> "unknown (binder not received)"
+            else -> "unknown ($permissionState)"
+        }
+        shizukuRuntimeStatusView.text = buildString {
+            appendLine("binderReady: $binderReady")
+            appendLine("permission: $permissionLabel")
+            append("capabilityFlag: ${if (::capabilityState.isInitialized) capabilityState.shizuku else false}")
+        }
+        requestShizukuPermissionButton.isEnabled = binderReady && permissionState != PackageManager.PERMISSION_GRANTED
+        if (::capabilityState.isInitialized) {
+            capabilityState = capabilityState.copy(shizuku = binderReady)
+        }
+    }
+
+    private fun ensureShizukuReadyForExecution(onMessage: (String) -> Unit): Boolean {
+        if (!isShizukuBinderReady()) {
+            onMessage("Shizuku binder not connected. Open Shizuku app and start the service first.")
+            onMessage("Tap 'Open Shizuku App', start service, then tap 'Refresh Shizuku Status'.")
+            refreshShizukuRuntimeStatus()
+            return false
+        }
+        val permissionState = getShizukuPermissionState()
+        if (permissionState != PackageManager.PERMISSION_GRANTED) {
+            onMessage("Shizuku permission is not granted. Tap 'Request Shizuku Permission'.")
+            refreshShizukuRuntimeStatus()
+            return false
+        }
+        return true
+    }
+
+    private fun openShizukuApp() {
+        val candidates = listOf("moe.shizuku.privileged.api", "rikka.shizuku")
+        val intent = candidates
+            .asSequence()
+            .mapNotNull { packageManager.getLaunchIntentForPackage(it) }
+            .firstOrNull()
+        if (intent == null) {
+            appendOutput("Shizuku app is not installed on this device.")
+            return
+        }
+        startActivity(intent)
+    }
+
+    private fun requestShizukuPermission() {
+        if (!isShizukuBinderReady()) {
+            appendOutput("Cannot request permission: Shizuku binder not connected. Start Shizuku service first.")
+            refreshShizukuRuntimeStatus()
+            return
+        }
+        try {
+            Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
+            appendOutput("Requested Shizuku permission.")
+        } catch (error: Throwable) {
+            appendOutput("Failed to request Shizuku permission: ${error.message ?: "unknown error"}")
+        }
+        refreshShizukuRuntimeStatus()
+    }
+
+    private fun isShizukuBinderReady(): Boolean {
+        return try {
             Shizuku.pingBinder()
         } catch (_: Throwable) {
             false
         }
-        val permissionState = try {
-            if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) "granted" else "denied"
-        } catch (error: Throwable) {
-            "unknown (${error.message ?: "error"})"
+    }
+
+    private fun getShizukuPermissionState(): Int? {
+        if (!isShizukuBinderReady()) return null
+        return try {
+            Shizuku.checkSelfPermission()
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun buildShizukuStateSummary(): String {
+        val binderReady = isShizukuBinderReady()
+        val permissionState = when (getShizukuPermissionState()) {
+            PackageManager.PERMISSION_GRANTED -> "granted"
+            PackageManager.PERMISSION_DENIED -> "denied"
+            null -> "unknown (binder haven't been received)"
+            else -> "unknown"
         }
         return "Shizuku state -> binderReady=$binderReady, permission=$permissionState."
     }
@@ -1103,10 +1237,34 @@ class MainActivity : AppCompatActivity() {
         receiverRegistered = true
     }
 
+    private fun registerShizukuListeners() {
+        if (shizukuListenersRegistered) return
+        try {
+            Shizuku.addBinderReceivedListenerSticky(shizukuBinderReceivedListener)
+            Shizuku.addBinderDeadListener(shizukuBinderDeadListener)
+            Shizuku.addRequestPermissionResultListener(shizukuPermissionResultListener)
+            shizukuListenersRegistered = true
+        } catch (_: Throwable) {
+            // ignore; status UI still works through manual refresh checks
+        }
+    }
+
     private fun unregisterVoiceEventReceiver() {
         if (!receiverRegistered) return
         unregisterReceiver(voiceEventReceiver)
         receiverRegistered = false
+    }
+
+    private fun unregisterShizukuListeners() {
+        if (!shizukuListenersRegistered) return
+        try {
+            Shizuku.removeBinderReceivedListener(shizukuBinderReceivedListener)
+            Shizuku.removeBinderDeadListener(shizukuBinderDeadListener)
+            Shizuku.removeRequestPermissionResultListener(shizukuPermissionResultListener)
+        } catch (_: Throwable) {
+            // ignore
+        }
+        shizukuListenersRegistered = false
     }
 
     private fun looksLikeYes(text: String): Boolean {
@@ -1129,9 +1287,11 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         registerVoiceEventReceiver()
+        registerShizukuListeners()
     }
 
     override fun onStop() {
+        unregisterShizukuListeners()
         unregisterVoiceEventReceiver()
         super.onStop()
     }
@@ -1141,6 +1301,7 @@ class MainActivity : AppCompatActivity() {
         reloadVoiceConfiguration(showStatus = false)
         updateMicrophonePermissionUi()
         refreshSpecialPermissionsStatus()
+        refreshShizukuRuntimeStatus()
         refreshAuditDebugSection()
     }
 
@@ -1153,5 +1314,6 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val KEY_PROMPTED_MIC_PERMISSION = "prompted_mic_permission"
+        private const val SHIZUKU_PERMISSION_REQUEST_CODE = 9567
     }
 }

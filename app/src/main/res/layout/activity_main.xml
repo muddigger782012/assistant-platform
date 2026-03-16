@@ -107,10 +107,48 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/shizuku_runtime_status_title"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvShizukuRuntimeStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="#10000000"
+                    android:padding="8dp"
+                    android:textIsSelectable="true"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/btnRefreshShizukuStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/shizuku_refresh_status" />
+
+                <Button
+                    android:id="@+id/btnOpenShizukuApp"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/shizuku_open_app" />
+
+                <Button
+                    android:id="@+id/btnRequestShizukuPermission"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/shizuku_request_permission" />
+
                 <EditText
                     android:id="@+id/etShizukuCommand"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
                     android:hint="@string/shizuku_command_hint"
                     android:inputType="text"
                     android:minHeight="48dp" />

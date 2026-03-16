@@ -1,11 +1,13 @@
 package com.assistant.core.adapters
 
 import android.content.Context
+import android.content.pm.PackageManager
 import com.assistant.core.engine.ActionRegistry
 import com.assistant.core.models.ActionRequest
 import com.assistant.core.models.ActionResult
 import com.assistant.core.models.CapabilityState
 import com.assistant.core.services.ShizukuShellService
+import rikka.shizuku.Shizuku
 
 class ShizukuAdapter(
     context: Context
@@ -21,6 +23,22 @@ class ShizukuAdapter(
                 success = false,
                 adapterUsed = "SHIZUKU",
                 message = "Unsupported action for ShizukuAdapter: ${actionRequest.actionType}"
+            )
+        }
+        if (!isBinderReady()) {
+            return ActionResult(
+                id = actionRequest.id,
+                success = false,
+                adapterUsed = "SHIZUKU",
+                message = "Shizuku service is not connected. Open the Shizuku app and start the service first."
+            )
+        }
+        if (!hasPermission()) {
+            return ActionResult(
+                id = actionRequest.id,
+                success = false,
+                adapterUsed = "SHIZUKU",
+                message = "Shizuku permission is not granted. Request permission from the Shizuku tab."
             )
         }
 
@@ -87,6 +105,22 @@ class ShizukuAdapter(
                 message = "Shizuku execution error: ${error.message ?: "unknown error"}",
                 output = "rish helper file: $helperPath"
             )
+        }
+    }
+
+    private fun isBinderReady(): Boolean {
+        return try {
+            Shizuku.pingBinder()
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun hasPermission(): Boolean {
+        return try {
+            Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        } catch (_: Throwable) {
+            false
         }
     }
 }
