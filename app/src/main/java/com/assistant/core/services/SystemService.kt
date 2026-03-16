@@ -7,7 +7,7 @@ class SystemService(private val context: Context) {
 
     fun buildStatusSummary(capabilityState: CapabilityState): String {
         return buildString {
-            appendLine("Assistant Platform status")
+            appendLine("J.A.R.V.I.S. status")
             appendLine("filesDir: ${context.filesDir.absolutePath}")
             appendLine("standard: ${capabilityState.standard}")
             appendLine("specialAccess: ${capabilityState.specialAccess}")

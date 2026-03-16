@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Assistant Platform</string>
+    <string name="app_name">J.A.R.V.I.S.</string>
     <string name="command_hint">Type command (example: create project)</string>
     <string name="create_project">Create Project</string>
     <string name="run_shizuku_test">Run Shizuku Test Command</string>

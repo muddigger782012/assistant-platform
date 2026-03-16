@@ -17,7 +17,7 @@ class CodingService(
             mainFile,
             """
             def main():
-                print("Hello from Assistant Platform")
+                print("Hello from J.A.R.V.I.S.")
 
             if __name__ == "__main__":
                 main()
