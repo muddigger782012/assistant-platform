@@ -57,13 +57,22 @@ class DhizukuAdapter(
                 capabilityState.deviceOwner -> {
                     // If this app is device owner directly, reboot using own admin component.
                     val selfComponent = Dhizuku.getOwnerComponent(dpm)
-                    dpm.reboot(selfComponent)
-                    ActionResult(
-                        id = actionRequest.id,
-                        success = true,
-                        adapterUsed = "DHIZUKU",
-                        message = "Reboot requested using direct device-owner path."
-                    )
+                    if (selfComponent == null) {
+                        ActionResult(
+                            id = actionRequest.id,
+                            success = false,
+                            adapterUsed = "DHIZUKU",
+                            message = "Device-owner component not found for reboot."
+                        )
+                    } else {
+                        dpm.reboot(selfComponent)
+                        ActionResult(
+                            id = actionRequest.id,
+                            success = true,
+                            adapterUsed = "DHIZUKU",
+                            message = "Reboot requested using direct device-owner path."
+                        )
+                    }
                 }
                 dhizukuStatus.initialized && dhizukuStatus.permissionGranted -> {
                     val ownerComponent = Dhizuku.getOwnerComponent(context)
