@@ -1,10 +1,14 @@
 package com.assistant.core
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.assistant.core.adapters.DhizukuAdapter
 import com.assistant.core.adapters.ShizukuAdapter
 import com.assistant.core.adapters.SpecialAccessAdapter
@@ -22,6 +26,7 @@ import com.assistant.core.services.AuditService
 import com.assistant.core.services.CodingService
 import com.assistant.core.services.FileService
 import com.assistant.core.services.SystemService
+import com.assistant.core.services.VoiceAssistantService
 import com.assistant.core.storage.ActionRepository
 import com.assistant.core.storage.AuditRepository
 import com.assistant.core.storage.Database
@@ -37,8 +42,24 @@ class MainActivity : AppCompatActivity() {
     private lateinit var auditService: AuditService
     private lateinit var systemService: SystemService
     private lateinit var capabilityState: CapabilityState
+    private lateinit var voiceService: VoiceAssistantService
+    private lateinit var voiceButton: Button
+    private var voiceEnabled = false
+    private var shouldStartVoiceAfterPermission = false
 
     private val outputLines = mutableListOf<String>()
+    private val audioPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            if (shouldStartVoiceAfterPermission) {
+                startVoiceHotwordMode()
+            }
+        } else {
+            appendOutput(getString(R.string.voice_permission_required))
+            shouldStartVoiceAfterPermission = false
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,6 +70,7 @@ class MainActivity : AppCompatActivity() {
         val createButton: Button = findViewById(R.id.btnCreateProject)
         val shizukuButton: Button = findViewById(R.id.btnRunShizuku)
         val statusButton: Button = findViewById(R.id.btnShowStatus)
+        voiceButton = findViewById(R.id.btnToggleVoice)
 
         val database = Database(this)
         val projectRepository = ProjectRepository(database)
@@ -86,7 +108,30 @@ class MainActivity : AppCompatActivity() {
             capabilityProvider = { capabilityState }
         )
 
+        voiceService = VoiceAssistantService(
+            context = this,
+            onStatus = { status -> runOnUiThread { appendOutput(status) } },
+            onHotwordDetected = { runOnUiThread { appendOutput("Hotword detected: jarvis") } },
+            onCommandDetected = { command ->
+                runOnUiThread {
+                    commandInput.setText(command)
+                    appendOutput("Voice command: $command")
+                    val result = assistantEngine.handleUserCommand(command)
+                    appendActionResult(result)
+                    appendRecentAudit()
+                    voiceService.speak(
+                        if (result.success) {
+                            result.message
+                        } else {
+                            "I couldn't complete that command."
+                        }
+                    )
+                }
+            }
+        )
+
         appendOutput("Startup capability status:\n${systemService.buildStatusSummary(capabilityState)}")
+        appendOutput(getString(R.string.voice_hint))
         appendRecentAudit()
 
         createButton.setOnClickListener {
@@ -115,6 +160,14 @@ class MainActivity : AppCompatActivity() {
             appendActionResult(result)
             appendRecentAudit()
         }
+
+        voiceButton.setOnClickListener {
+            if (voiceEnabled) {
+                stopVoiceHotwordMode()
+            } else {
+                ensureMicPermissionAndStartVoice()
+            }
+        }
     }
 
     private fun appendActionResult(result: ActionResult) {
@@ -136,5 +189,42 @@ class MainActivity : AppCompatActivity() {
     private fun appendOutput(text: String) {
         outputLines.add(text)
         outputLog.text = outputLines.joinToString(separator = "\n\n")
+    }
+
+    private fun ensureMicPermissionAndStartVoice() {
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (granted) {
+            startVoiceHotwordMode()
+        } else {
+            shouldStartVoiceAfterPermission = true
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun startVoiceHotwordMode() {
+        shouldStartVoiceAfterPermission = false
+        if (!voiceService.isRecognitionAvailable()) {
+            appendOutput(getString(R.string.voice_unavailable))
+            return
+        }
+        voiceEnabled = true
+        voiceButton.text = getString(R.string.stop_voice_hotword)
+        appendOutput(getString(R.string.voice_started))
+        voiceService.startHotwordLoop()
+    }
+
+    private fun stopVoiceHotwordMode() {
+        voiceEnabled = false
+        voiceButton.text = getString(R.string.start_voice_hotword)
+        voiceService.stopListening()
+    }
+
+    override fun onDestroy() {
+        voiceService.shutdown()
+        super.onDestroy()
     }
 }

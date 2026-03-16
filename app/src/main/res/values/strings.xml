@@ -5,4 +5,10 @@
     <string name="create_project">Create Project</string>
     <string name="run_shizuku_test">Run Shizuku Test Command</string>
     <string name="show_capability_status">Show Capability Status</string>
+    <string name="start_voice_hotword">Start Voice (\"jarvis\")</string>
+    <string name="stop_voice_hotword">Stop Voice</string>
+    <string name="voice_permission_required">Microphone permission is required for voice mode.</string>
+    <string name="voice_unavailable">Speech recognition service is unavailable on this device.</string>
+    <string name="voice_started">Voice mode enabled. Say \"jarvis\" followed by your command.</string>
+    <string name="voice_hint">Voice support: Tap Start Voice and say \"jarvis\" to wake.</string>
 </resources>

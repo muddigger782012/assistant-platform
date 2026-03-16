@@ -34,6 +34,13 @@
         android:layout_marginTop="8dp"
         android:text="@string/show_capability_status" />
 
+    <Button
+        android:id="@+id/btnToggleVoice"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/start_voice_hotword" />
+
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
