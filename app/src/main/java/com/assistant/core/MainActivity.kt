@@ -43,6 +43,7 @@ import com.assistant.core.services.CodingService
 import com.assistant.core.services.DhizukuService
 import com.assistant.core.services.DhizukuStatus
 import com.assistant.core.services.FileService
+import com.assistant.core.services.HybridAssistantService
 import com.assistant.core.services.LocalVoiceCommand
 import com.assistant.core.services.PrivilegeCatalogService
 import com.assistant.core.services.RunningShizukuCommand
@@ -116,6 +117,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var voiceService: VoiceAssistantService
     private lateinit var voicePreferences: VoicePreferences
     private lateinit var voiceCommandParser: VoiceCommandParser
+    private lateinit var hybridAssistantService: HybridAssistantService
     private lateinit var dhizukuService: DhizukuService
     private lateinit var privilegeCatalogService: PrivilegeCatalogService
     private lateinit var shizukuShellService: ShizukuShellService
@@ -220,6 +222,12 @@ class MainActivity : AppCompatActivity() {
             ),
             actionRepository = actionRepository,
             auditService = auditService,
+            capabilityProvider = { capabilityState }
+        )
+        hybridAssistantService = HybridAssistantService(
+            assistantEngine = assistantEngine,
+            actionRegistry = actionRegistry,
+            systemService = systemService,
             capabilityProvider = { capabilityState }
         )
 
@@ -330,9 +338,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnAssistantQuickStatus).setOnClickListener {
-            val result = assistantEngine.executeAction(actionRegistry.showStatusRequest())
-            appendActionResult(result)
-            statusOutput.text = result.output ?: result.message
+            val reply = hybridAssistantService.handleUserInput("show status")
+            appendOutput("J.A.R.V.I.S.: ${reply.text}")
+            statusOutput.text = reply.actionResult?.output ?: reply.text
         }
 
         findViewById<Button>(R.id.btnCreateProject).setOnClickListener {
@@ -359,11 +367,13 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnShowStatus).setOnClickListener {
             val commandText = commandInput.text?.toString()?.trim().orEmpty()
-            val result = if (commandText.isBlank()) assistantEngine.executeAction(actionRegistry.showStatusRequest())
-            else assistantEngine.handleUserCommand(commandText)
-            appendActionResult(result)
-            statusOutput.text = result.output ?: result.message
-            appendRecentAudit()
+            if (commandText.isBlank()) {
+                val reply = hybridAssistantService.handleUserInput("show status")
+                appendOutput("J.A.R.V.I.S.: ${reply.text}")
+                statusOutput.text = reply.actionResult?.output ?: reply.text
+            } else {
+                runAssistantCommandFromInput()
+            }
         }
 
         voiceButton.setOnClickListener {
@@ -412,13 +422,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun runAssistantCommandFromInput() {
         val commandText = commandInput.text?.toString()?.trim().orEmpty()
-        val result = if (commandText.isBlank()) {
-            assistantEngine.executeAction(actionRegistry.showStatusRequest())
-        } else {
-            assistantEngine.handleUserCommand(commandText)
-        }
-        appendActionResult(result)
-        statusOutput.text = result.output ?: result.message
+        val reply = hybridAssistantService.handleUserInput(commandText)
+        appendOutput("You: ${if (commandText.isBlank()) "(status request)" else commandText}")
+        appendOutput("J.A.R.V.I.S.: ${reply.text}")
+        statusOutput.text = reply.actionResult?.output ?: reply.text
         appendRecentAudit()
     }
 
@@ -576,11 +583,18 @@ class MainActivity : AppCompatActivity() {
                 voiceService.speak(getString(R.string.voice_settings_opened))
             }
             LocalVoiceCommand.NONE -> {
-                val result = parsed.actionRequest?.let { assistantEngine.executeAction(it) }
-                    ?: assistantEngine.handleUserCommand(parsed.fallbackTextCommand ?: command)
-                appendActionResult(result)
+                val directResult = parsed.actionRequest?.let { assistantEngine.executeAction(it) }
+                if (directResult != null) {
+                    appendActionResult(directResult)
+                    statusOutput.text = directResult.output ?: directResult.message
+                    voiceService.speak(if (directResult.success) directResult.message else "I couldn't complete that command.")
+                } else {
+                    val reply = hybridAssistantService.handleUserInput(parsed.fallbackTextCommand ?: command)
+                    appendOutput("J.A.R.V.I.S.: ${reply.text}")
+                    statusOutput.text = reply.actionResult?.output ?: reply.text
+                    voiceService.speak(reply.text.lineSequence().firstOrNull()?.take(180) ?: "Done.")
+                }
                 appendRecentAudit()
-                voiceService.speak(if (result.success) result.message else "I couldn't complete that command.")
             }
         }
     }
