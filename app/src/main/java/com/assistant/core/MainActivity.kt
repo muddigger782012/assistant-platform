@@ -27,6 +27,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.VelocityTracker
+import android.view.GestureDetector
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.widget.Button
@@ -186,6 +187,7 @@ class MainActivity : AppCompatActivity() {
     private var headerSelectionAnimator: ValueAnimator? = null
     private var pulseAnimator: ObjectAnimator? = null
     private var scanlineAnimator: ObjectAnimator? = null
+    private var swipeGestureDetector: GestureDetector? = null
     private var velocityTracker: VelocityTracker? = null
     private val touchSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop.toFloat() }
 
@@ -568,13 +570,47 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindSwipeNavigation() {
-        // Swipe/drag paging is handled centrally in dispatchTouchEvent so all windows respond consistently.
+        val swipeDistanceThreshold = 64f * resources.displayMetrics.density
+        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                if (!allowSwipeForCurrentTouch || e1 == null) return false
+                val dx = e2.rawX - e1.rawX
+                val dy = e2.rawY - e1.rawY
+                val horizontalIntent = kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f
+                val qualifies = horizontalIntent &&
+                    kotlin.math.abs(dx) >= swipeDistanceThreshold &&
+                    kotlin.math.abs(velocityX) >= SWIPE_VELOCITY_THRESHOLD
+                if (!qualifies) return false
+
+                val delta = if (dx < 0f) 1 else -1
+                val target = (currentTabIndex + delta).coerceIn(0, tabSections.lastIndex)
+                if (target == currentTabIndex) return false
+                showTab(target, animate = true, direction = delta)
+                return true
+            }
+        })
+        swipeGestureDetector = detector
+
+        tabSections.forEach { section ->
+            section.setOnTouchListener { _, event ->
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                    allowSwipeForCurrentTouch = isSwipeAllowedForTouchStart(event)
+                }
+                detector.onTouchEvent(event)
+                false
+            }
+        }
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (handleDragPagingTouch(event)) {
-            return true
-        }
+        // Keep this stable: do not globally intercept touch dispatch.
         return super.dispatchTouchEvent(event)
     }
 
