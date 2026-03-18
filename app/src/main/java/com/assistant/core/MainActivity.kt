@@ -1076,7 +1076,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun launchInstallerForDownloadedApk(apkFile: File) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
-            setUpdateStatus("Enable 'Install unknown apps' for J.A.R.V.I.S., then tap Upgrade again.")
+            setUpdateStatus("Enable 'Install unknown apps' for J.A.R.V.I.S., then tap Update App again.")
             startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
             return
         }
