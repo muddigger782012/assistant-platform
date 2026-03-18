@@ -22,6 +22,7 @@ import android.os.PowerManager
 import android.os.UserManager
 import android.provider.Settings
 import android.graphics.Rect
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
