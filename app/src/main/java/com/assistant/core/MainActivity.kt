@@ -32,6 +32,8 @@ import android.view.animation.LinearInterpolator
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.SeekBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -180,6 +182,7 @@ class MainActivity : AppCompatActivity() {
     private var dragStartRawY = 0f
     private var isHorizontalDragPaging = false
     private var dragTargetTabIndex = -1
+    private var allowSwipeForCurrentTouch = true
     private var headerSelectionAnimator: ValueAnimator? = null
     private var pulseAnimator: ObjectAnimator? = null
     private var scanlineAnimator: ObjectAnimator? = null
@@ -588,10 +591,14 @@ class MainActivity : AppCompatActivity() {
                 dragStartRawY = event.rawY
                 isHorizontalDragPaging = false
                 dragTargetTabIndex = -1
+                allowSwipeForCurrentTouch = isSwipeAllowedForTouchStart(event)
                 velocityTracker?.recycle()
                 velocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
             }
             MotionEvent.ACTION_MOVE -> {
+                if (!allowSwipeForCurrentTouch && !isHorizontalDragPaging) {
+                    return false
+                }
                 velocityTracker?.addMovement(event)
                 val dx = event.rawX - dragStartRawX
                 val dy = event.rawY - dragStartRawY
@@ -738,6 +745,7 @@ class MainActivity : AppCompatActivity() {
         velocityTracker = null
         dragTargetTabIndex = -1
         isHorizontalDragPaging = false
+        allowSwipeForCurrentTouch = true
     }
 
     private fun isTouchInsideTabContainer(event: MotionEvent): Boolean {
@@ -749,6 +757,44 @@ class MainActivity : AppCompatActivity() {
             x <= location[0] + tabContainer.width &&
             y >= location[1] &&
             y <= location[1] + tabContainer.height
+    }
+
+    private fun isSwipeAllowedForTouchStart(event: MotionEvent): Boolean {
+        val activeSection = tabSections.getOrNull(currentTabIndex) ?: return true
+        val targetView = findDeepestTouchedView(activeSection, event.rawX, event.rawY)
+        if (targetView == null) return true
+        return !isInteractiveControl(targetView)
+    }
+
+    private fun findDeepestTouchedView(root: View, rawX: Float, rawY: Float): View? {
+        val location = IntArray(2)
+        root.getLocationOnScreen(location)
+        val insideRoot = rawX >= location[0] &&
+            rawX <= location[0] + root.width &&
+            rawY >= location[1] &&
+            rawY <= location[1] + root.height
+        if (!insideRoot) return null
+        if (root !is ViewGroup) return root
+
+        for (index in root.childCount - 1 downTo 0) {
+            val child = root.getChildAt(index)
+            if (child.visibility != View.VISIBLE || child.alpha <= 0f) continue
+            val found = findDeepestTouchedView(child, rawX, rawY)
+            if (found != null) return found
+        }
+        return root
+    }
+
+    private fun isInteractiveControl(view: View): Boolean {
+        return view is Button ||
+            view is EditText ||
+            view is SeekBar ||
+            view is SwitchMaterial ||
+            view is ScrollView ||
+            view is HorizontalScrollView ||
+            view.isClickable ||
+            view.isLongClickable ||
+            view.isFocusable
     }
 
     private fun updateSystemGestureExclusionRects() {
