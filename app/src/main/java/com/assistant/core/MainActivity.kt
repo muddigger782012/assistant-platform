@@ -1039,9 +1039,9 @@ class MainActivity : AppCompatActivity() {
             try {
                 val updateDir = File(cacheDir, "updates").apply { mkdirs() }
                 val apkFile = File(updateDir, "jarvis-latest.apk")
-                downloadLatestApk(apkFile)
+                val sourceUrl = downloadLatestApk(apkFile)
                 runOnUiThread {
-                    setUpdateStatus("Download complete. Launching installer...")
+                    setUpdateStatus("Download complete from ${sourceUrl.substringAfter("//")}. Launching installer...")
                     launchInstallerForDownloadedApk(apkFile)
                 }
             } catch (error: Throwable) {
@@ -1057,13 +1057,27 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun downloadLatestApk(targetFile: File) {
-        val connection = (URL(LATEST_APK_URL).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 20000
-            readTimeout = 60000
+    private fun downloadLatestApk(targetFile: File): String {
+        val failures = mutableListOf<String>()
+        for (url in UPDATE_URL_CANDIDATES) {
+            val result = runCatching { downloadLatestApkFromUrl(url, targetFile) }
+            if (result.isSuccess) {
+                return url
+            }
+            failures += "${url.substringAfter("//")} -> ${result.exceptionOrNull()?.message ?: "unknown error"}"
+        }
+        throw IllegalStateException(failures.firstOrNull() ?: "No updater URL candidates available.")
+    }
+
+    private fun downloadLatestApkFromUrl(url: String, targetFile: File) {
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 22000
+            readTimeout = 70000
             requestMethod = "GET"
             doInput = true
-            setRequestProperty("User-Agent", "JARVIS-Updater/2.0")
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "JARVIS-Updater/2.3")
+            setRequestProperty("Accept", "application/vnd.android.package-archive,application/octet-stream,*/*")
             connect()
         }
         try {
@@ -1084,6 +1098,9 @@ class MainActivity : AppCompatActivity() {
             if (!targetFile.exists() || targetFile.length() < MIN_VALID_APK_BYTES) {
                 throw IllegalStateException("Downloaded APK appears invalid.")
             }
+        } catch (error: Throwable) {
+            targetFile.delete()
+            throw error
         } finally {
             connection.disconnect()
         }
@@ -1857,7 +1874,11 @@ class MainActivity : AppCompatActivity() {
         private const val SWIPE_VELOCITY_THRESHOLD = 900f
         private const val DRAG_PAGE_PROGRESS_THRESHOLD = 0.24f
         private const val MIN_VALID_APK_BYTES = 250_000L
-        private const val LATEST_APK_URL =
-            "https://raw.githubusercontent.com/muddigger782012/assistant-platform/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk"
+        private val UPDATE_URL_CANDIDATES = listOf(
+            "https://raw.githubusercontent.com/muddigger782012/assistant-platform/cursor%2Fcursor-build-pack-project-8400/artifacts/app-debug.apk",
+            "https://raw.githubusercontent.com/muddigger782012/assistant-platform/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk",
+            "https://github.com/muddigger782012/assistant-platform/raw/refs/heads/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk",
+            "https://github.com/muddigger782012/assistant-platform/raw/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk"
+        )
     }
 }
