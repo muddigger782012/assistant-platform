@@ -412,15 +412,15 @@ class MainActivity : AppCompatActivity() {
     private fun setupTabs() {
         headerTabButtons.forEachIndexed { index, button ->
             button.setOnClickListener {
-                showTab(index, animate = true, direction = 0)
+                showTab(index, animate = true)
             }
         }
         initializeTabPager()
         bindSwipeNavigation()
-        showTab(0, animate = false, direction = 0)
+        showTab(0, animate = false)
     }
 
-    private fun showTab(index: Int, animate: Boolean, direction: Int) {
+    private fun showTab(index: Int, animate: Boolean) {
         if (index !in tabSections.indices) return
         if (!::tabPager.isInitialized) {
             currentTabIndex = index
