@@ -20,10 +20,11 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.os.UserManager
 import android.provider.Settings
-import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.VelocityTracker
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.widget.Button
@@ -172,8 +173,15 @@ class MainActivity : AppCompatActivity() {
     private var runningTerminalCommand: RunningShizukuCommand? = null
     private var updateInProgress = false
     private var currentTabIndex = 0
+    private var dragStartRawX = 0f
+    private var dragStartRawY = 0f
+    private var dragCurrentDx = 0f
+    private var isHorizontalDragPaging = false
+    private var dragTargetTabIndex = -1
     private var pulseAnimator: ObjectAnimator? = null
     private var scanlineAnimator: ObjectAnimator? = null
+    private var velocityTracker: VelocityTracker? = null
+    private val touchSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop.toFloat() }
 
     private val shizukuBinderReceivedListener = Shizuku.OnBinderReceivedListener {
         runOnUiThread {
@@ -495,49 +503,182 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindSwipeNavigation() {
-        val swipeDistanceThreshold = 72f * resources.displayMetrics.density
-        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(event: MotionEvent): Boolean = true
+        // Swipe/drag paging is handled centrally in dispatchTouchEvent so all windows respond consistently.
+    }
 
-            override fun onFling(
-                e1: MotionEvent?,
-                e2: MotionEvent,
-                velocityX: Float,
-                velocityY: Float
-            ): Boolean {
-                if (e1 == null) return false
-                val dx = e2.x - e1.x
-                val dy = e2.y - e1.y
-                val horizontalIntent = kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f
-                val qualifiesForFling = horizontalIntent &&
-                    kotlin.math.abs(dx) >= swipeDistanceThreshold &&
-                    kotlin.math.abs(velocityX) >= SWIPE_VELOCITY_THRESHOLD
-                if (!qualifiesForFling) return false
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (handleDragPagingTouch(event)) {
+            return true
+        }
+        return super.dispatchTouchEvent(event)
+    }
 
-                if (dx < 0) {
-                    goToAdjacentTab(1)
-                } else {
-                    goToAdjacentTab(-1)
+    private fun handleDragPagingTouch(event: MotionEvent): Boolean {
+        if (!isTouchInsideTabContainer(event)) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                resetDragPagingState()
+            }
+            return false
+        }
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                dragStartRawX = event.rawX
+                dragStartRawY = event.rawY
+                dragCurrentDx = 0f
+                isHorizontalDragPaging = false
+                dragTargetTabIndex = -1
+                velocityTracker?.recycle()
+                velocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                velocityTracker?.addMovement(event)
+                val dx = event.rawX - dragStartRawX
+                val dy = event.rawY - dragStartRawY
+                dragCurrentDx = dx
+
+                if (!isHorizontalDragPaging) {
+                    val enoughHorizontalIntent = kotlin.math.abs(dx) > touchSlop &&
+                        kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f
+                    if (!enoughHorizontalIntent) return false
+                    val direction = if (dx < 0f) 1 else -1
+                    val target = (currentTabIndex + direction).coerceIn(0, tabSections.lastIndex)
+                    if (target == currentTabIndex) return false
+                    beginDragPaging(target)
+                    isHorizontalDragPaging = true
                 }
+
+                updateDragPaging(dx)
                 return true
             }
-        })
-        tabSections.forEach { section ->
-            section.setOnTouchListener { _, event ->
-                detector.onTouchEvent(event)
-                false
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                velocityTracker?.addMovement(event)
+                if (!isHorizontalDragPaging) {
+                    resetDragPagingState()
+                    return false
+                }
+                velocityTracker?.computeCurrentVelocity(1000)
+                val velocityX = velocityTracker?.xVelocity ?: 0f
+                finishDragPaging(cancel = event.actionMasked == MotionEvent.ACTION_CANCEL, velocityX = velocityX)
+                resetDragPagingState()
+                return true
             }
+        }
+        return false
+    }
+
+    private fun beginDragPaging(targetIndex: Int) {
+        dragTargetTabIndex = targetIndex
+        val currentView = tabSections[currentTabIndex]
+        val targetView = tabSections[targetIndex]
+        val width = tabContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val direction = if (targetIndex > currentTabIndex) 1 else -1
+
+        targetView.animate().cancel()
+        currentView.animate().cancel()
+        targetView.visibility = View.VISIBLE
+        targetView.translationX = if (direction > 0) width.toFloat() else -width.toFloat()
+        targetView.alpha = 0.86f
+        currentView.translationX = 0f
+        currentView.alpha = 1f
+    }
+
+    private fun updateDragPaging(dx: Float) {
+        if (dragTargetTabIndex !in tabSections.indices) return
+        val width = tabContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val currentView = tabSections[currentTabIndex]
+        val targetView = tabSections[dragTargetTabIndex]
+        val direction = if (dragTargetTabIndex > currentTabIndex) 1 else -1
+
+        val clampedDx = if (direction > 0) {
+            dx.coerceAtMost(0f).coerceAtLeast(-width.toFloat())
+        } else {
+            dx.coerceAtLeast(0f).coerceAtMost(width.toFloat())
+        }
+
+        currentView.translationX = clampedDx
+        targetView.translationX = if (direction > 0) width + clampedDx else -width + clampedDx
+
+        val progress = (kotlin.math.abs(clampedDx) / width.toFloat()).coerceIn(0f, 1f)
+        currentView.alpha = (1f - (progress * 0.22f)).coerceIn(0.75f, 1f)
+        targetView.alpha = (0.82f + (progress * 0.18f)).coerceIn(0.82f, 1f)
+    }
+
+    private fun finishDragPaging(cancel: Boolean, velocityX: Float) {
+        if (dragTargetTabIndex !in tabSections.indices) return
+        val width = tabContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val currentView = tabSections[currentTabIndex]
+        val targetView = tabSections[dragTargetTabIndex]
+        val direction = if (dragTargetTabIndex > currentTabIndex) 1 else -1
+        val progress = (kotlin.math.abs(currentView.translationX) / width.toFloat()).coerceIn(0f, 1f)
+        val flingMatchesDirection = if (direction > 0) velocityX < -SWIPE_VELOCITY_THRESHOLD else velocityX > SWIPE_VELOCITY_THRESHOLD
+        val shouldComplete = !cancel && (progress >= DRAG_PAGE_PROGRESS_THRESHOLD || flingMatchesDirection)
+
+        if (shouldComplete) {
+            val exitX = if (direction > 0) -width.toFloat() else width.toFloat()
+            currentView.animate()
+                .translationX(exitX)
+                .alpha(0.78f)
+                .setDuration(TAB_TRANSITION_DURATION_MS)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withEndAction {
+                    currentView.visibility = View.GONE
+                    currentView.translationX = 0f
+                    currentView.alpha = 1f
+                }
+                .start()
+
+            targetView.animate()
+                .translationX(0f)
+                .alpha(1f)
+                .setDuration(TAB_TRANSITION_DURATION_MS)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withEndAction {
+                    currentTabIndex = dragTargetTabIndex
+                    updateHeaderSelection(currentTabIndex)
+                }
+                .start()
+        } else {
+            currentView.animate()
+                .translationX(0f)
+                .alpha(1f)
+                .setDuration(TAB_TRANSITION_DURATION_MS)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .start()
+
+            val resetX = if (direction > 0) width.toFloat() else -width.toFloat()
+            targetView.animate()
+                .translationX(resetX)
+                .alpha(0.86f)
+                .setDuration(TAB_TRANSITION_DURATION_MS)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withEndAction {
+                    targetView.visibility = View.GONE
+                    targetView.translationX = 0f
+                    targetView.alpha = 1f
+                    updateHeaderSelection(currentTabIndex)
+                }
+                .start()
         }
     }
 
-    private fun goToAdjacentTab(delta: Int) {
-        val target = (currentTabIndex + delta).coerceIn(0, tabSections.lastIndex)
-        if (target == currentTabIndex) return
-        showTab(
-            index = target,
-            animate = true,
-            direction = if (delta > 0) 1 else -1
-        )
+    private fun resetDragPagingState() {
+        velocityTracker?.recycle()
+        velocityTracker = null
+        dragTargetTabIndex = -1
+        isHorizontalDragPaging = false
+        dragCurrentDx = 0f
+    }
+
+    private fun isTouchInsideTabContainer(event: MotionEvent): Boolean {
+        val location = IntArray(2)
+        tabContainer.getLocationOnScreen(location)
+        val x = event.rawX
+        val y = event.rawY
+        return x >= location[0] &&
+            x <= location[0] + tabContainer.width &&
+            y >= location[1] &&
+            y <= location[1] + tabContainer.height
     }
 
     private fun bindUiListeners() {
@@ -1606,6 +1747,7 @@ class MainActivity : AppCompatActivity() {
         private const val SHIZUKU_PERMISSION_REQUEST_CODE = 9567
         private const val TAB_TRANSITION_DURATION_MS = 220L
         private const val SWIPE_VELOCITY_THRESHOLD = 900f
+        private const val DRAG_PAGE_PROGRESS_THRESHOLD = 0.24f
         private const val LATEST_APK_URL =
             "https://raw.githubusercontent.com/muddigger782012/assistant-platform/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk"
     }

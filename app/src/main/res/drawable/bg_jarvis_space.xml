@@ -20,7 +20,8 @@
                 android:startColor="#1623C4FF"
                 android:centerColor="#0E5DFF99"
                 android:endColor="#001BE7D0" />
-            <corners android:radius="24dp" />
         </shape>
     </item>
+
+    <item android:drawable="@drawable/honeycomb_texture_overlay" />
 </layer-list>
