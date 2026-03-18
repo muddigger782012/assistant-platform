@@ -61,6 +61,10 @@
     <string name="shizuku_refresh_status">Refresh Shizuku Status</string>
     <string name="shizuku_open_app">Open Shizuku App</string>
     <string name="shizuku_request_permission">Request Shizuku Permission</string>
+    <string name="upgrade_latest_build">Upgrade App (One Tap)</string>
+    <string name="update_status_idle">Updater idle. Tap Upgrade App to download and install the latest build.</string>
+    <string name="jarvis_interface_title">J.A.R.V.I.S. Tactical Interface</string>
+    <string name="jarvis_interface_subtitle">Adaptive command matrix online</string>
     <string name="permissions_tab_title">Android Permissions Center</string>
     <string name="request_all_runtime_permissions">Request All Runtime Permissions</string>
     <string name="request_all_special_permissions">Request All Special Permissions</string>

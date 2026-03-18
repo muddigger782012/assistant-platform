@@ -3,8 +3,8 @@
     <style name="Widget.AssistantPlatform.TabLayout" parent="Widget.MaterialComponents.TabLayout">
         <item name="tabTextColor">@color/jarvis_on_dark_muted</item>
         <item name="tabSelectedTextColor">@color/jarvis_primary</item>
-        <item name="tabIndicatorColor">@color/jarvis_secondary</item>
-        <item name="tabRippleColor">@color/jarvis_secondary_variant</item>
+        <item name="tabIndicatorColor">@color/jarvis_neon_green</item>
+        <item name="tabRippleColor">@color/jarvis_neon_green_soft</item>
         <item name="android:background">@drawable/glass_panel_surface</item>
     </style>
 

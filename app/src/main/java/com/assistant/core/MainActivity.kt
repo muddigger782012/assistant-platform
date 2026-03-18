@@ -1,6 +1,7 @@
 package com.assistant.core
 
 import android.Manifest
+import android.animation.ObjectAnimator
 import android.app.AlarmManager
 import android.app.AppOpsManager
 import android.content.ClipData
@@ -19,13 +20,19 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.os.UserManager
 import android.provider.Settings
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.LinearInterpolator
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import com.assistant.core.adapters.DhizukuAdapter
 import com.assistant.core.adapters.ShizukuAdapter
@@ -65,6 +72,10 @@ import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.tabs.TabLayout
 import com.rosan.dhizuku.api.Dhizuku
 import rikka.shizuku.Shizuku
+import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -77,6 +88,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var shizukuRuntimeStatusView: TextView
     private lateinit var outputLog: TextView
     private lateinit var statusOutput: TextView
+    private lateinit var updateStatusOutput: TextView
     private lateinit var specialPermissionsStatus: TextView
     private lateinit var terminalOutputView: TextView
     private lateinit var terminalHistoryView: TextView
@@ -90,6 +102,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var terminalRunButton: Button
     private lateinit var terminalStopButton: Button
     private lateinit var terminalClearButton: Button
+    private lateinit var autoUpgradeButton: Button
     private lateinit var refreshShizukuStatusButton: Button
     private lateinit var openShizukuAppButton: Button
     private lateinit var requestShizukuPermissionButton: Button
@@ -123,7 +136,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnRebootFromDhizuku: Button
 
     private lateinit var tabLayout: TabLayout
+    private lateinit var tabContainer: FrameLayout
     private lateinit var tabSections: List<View>
+    private lateinit var hudPulseOverlay: View
+    private lateinit var scanlineView: View
 
     private lateinit var actionRegistry: ActionRegistry
     private lateinit var assistantEngine: AssistantEngine
@@ -154,6 +170,9 @@ class MainActivity : AppCompatActivity() {
     private var shizukuListenersRegistered = false
     private var pendingClarification: String? = null
     private var runningTerminalCommand: RunningShizukuCommand? = null
+    private var updateInProgress = false
+    private var pulseAnimator: ObjectAnimator? = null
+    private var scanlineAnimator: ObjectAnimator? = null
 
     private val shizukuBinderReceivedListener = Shizuku.OnBinderReceivedListener {
         runOnUiThread {
@@ -285,6 +304,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         bindUiListeners()
+        applyMicroInteractions(tabContainer)
         reloadVoiceConfiguration(showStatus = true)
         refreshPrivilegeCenter()
         refreshSpecialPermissionsStatus()
@@ -300,6 +320,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun initViews() {
         tabLayout = findViewById(R.id.tabMenu)
+        tabContainer = findViewById(R.id.tabContainer)
         tabSections = listOf(
             findViewById(R.id.tabAssistantSection),
             findViewById(R.id.tabProjectSection),
@@ -318,10 +339,13 @@ class MainActivity : AppCompatActivity() {
         shizukuRuntimeStatusView = findViewById(R.id.tvShizukuRuntimeStatus)
         outputLog = findViewById(R.id.tvOutputLog)
         statusOutput = findViewById(R.id.tvStatusOutput)
+        updateStatusOutput = findViewById(R.id.tvUpdateStatus)
         specialPermissionsStatus = findViewById(R.id.tvSpecialPermissionsStatus)
         terminalOutputView = findViewById(R.id.tvTerminalOutput)
         terminalHistoryView = findViewById(R.id.tvTerminalHistory)
         auditDebugOutput = findViewById(R.id.tvAuditDebugOutput)
+        hudPulseOverlay = findViewById(R.id.vHudPulseOverlay)
+        scanlineView = findViewById(R.id.vScanline)
         micPermissionStatusView = findViewById(R.id.tvMicPermissionStatus)
         grantMicPermissionButton = findViewById(R.id.btnGrantMicPermission)
         privilegeCenterView = findViewById(R.id.tvPrivilegeCenter)
@@ -331,6 +355,7 @@ class MainActivity : AppCompatActivity() {
         terminalRunButton = findViewById(R.id.btnTerminalRunCommand)
         terminalStopButton = findViewById(R.id.btnTerminalStopCommand)
         terminalClearButton = findViewById(R.id.btnTerminalClearOutput)
+        autoUpgradeButton = findViewById(R.id.btnAutoUpgradeApp)
         refreshShizukuStatusButton = findViewById(R.id.btnRefreshShizukuStatus)
         openShizukuAppButton = findViewById(R.id.btnOpenShizukuApp)
         requestShizukuPermissionButton = findViewById(R.id.btnRequestShizukuPermission)
@@ -422,6 +447,9 @@ class MainActivity : AppCompatActivity() {
         refreshShizukuStatusButton.setOnClickListener {
             refreshShizukuRuntimeStatus()
             appendOutput("Shizuku runtime status refreshed.")
+        }
+        autoUpgradeButton.setOnClickListener {
+            startAppUpgradeFlow()
         }
 
         openShizukuAppButton.setOnClickListener {
@@ -646,6 +674,141 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshTerminalHistory() {
         terminalHistoryView.text = terminalHistory.joinToString(separator = "\n")
+    }
+
+    private fun startAppUpgradeFlow() {
+        if (updateInProgress) {
+            setUpdateStatus("Update is already in progress.")
+            return
+        }
+        updateInProgress = true
+        autoUpgradeButton.isEnabled = false
+        setUpdateStatus("Downloading latest build...")
+
+        Thread {
+            try {
+                val updateDir = File(cacheDir, "updates").apply { mkdirs() }
+                val apkFile = File(updateDir, "jarvis-latest.apk")
+                downloadLatestApk(apkFile)
+                runOnUiThread {
+                    setUpdateStatus("Download complete. Launching installer...")
+                    launchInstallerForDownloadedApk(apkFile)
+                }
+            } catch (error: Throwable) {
+                runOnUiThread {
+                    setUpdateStatus("Update failed: ${error.message ?: "unknown error"}")
+                }
+            } finally {
+                runOnUiThread {
+                    updateInProgress = false
+                    autoUpgradeButton.isEnabled = true
+                }
+            }
+        }.start()
+    }
+
+    private fun downloadLatestApk(targetFile: File) {
+        val connection = (URL(LATEST_APK_URL).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 20000
+            readTimeout = 60000
+            requestMethod = "GET"
+            doInput = true
+            connect()
+        }
+        try {
+            if (connection.responseCode !in 200..299) {
+                throw IllegalStateException("HTTP ${connection.responseCode}")
+            }
+            connection.inputStream.use { input ->
+                FileOutputStream(targetFile, false).use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read <= 0) break
+                        output.write(buffer, 0, read)
+                    }
+                    output.flush()
+                }
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun launchInstallerForDownloadedApk(apkFile: File) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            setUpdateStatus("Enable 'Install unknown apps' for J.A.R.V.I.S., then tap Upgrade again.")
+            startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+            return
+        }
+        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apkFile)
+        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(installIntent)
+        setUpdateStatus("Installer opened. Confirm installation to complete upgrade.")
+    }
+
+    private fun setUpdateStatus(text: String) {
+        updateStatusOutput.text = text
+        appendOutput("Updater: $text")
+    }
+
+    private fun applyMicroInteractions(root: View) {
+        if (root is Button) {
+            root.setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        view.animate().scaleX(0.97f).scaleY(0.97f).setDuration(80L).start()
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        view.animate().scaleX(1f).scaleY(1f).setDuration(120L).start()
+                    }
+                }
+                false
+            }
+        }
+        if (root is ViewGroup) {
+            for (index in 0 until root.childCount) {
+                applyMicroInteractions(root.getChildAt(index))
+            }
+        }
+    }
+
+    private fun startHudAnimations() {
+        pulseAnimator?.cancel()
+        scanlineAnimator?.cancel()
+
+        pulseAnimator = ObjectAnimator.ofFloat(hudPulseOverlay, View.ALPHA, 0.06f, 0.2f, 0.08f).apply {
+            duration = 3200L
+            interpolator = AccelerateDecelerateInterpolator()
+            repeatCount = ObjectAnimator.INFINITE
+            start()
+        }
+
+        scanlineView.post {
+            val travel = (tabContainer.height - scanlineView.height).coerceAtLeast(1)
+            scanlineAnimator = ObjectAnimator.ofFloat(
+                scanlineView,
+                View.TRANSLATION_Y,
+                -scanlineView.height.toFloat(),
+                travel.toFloat()
+            ).apply {
+                duration = 3000L
+                interpolator = LinearInterpolator()
+                repeatCount = ObjectAnimator.INFINITE
+                start()
+            }
+        }
+    }
+
+    private fun stopHudAnimations() {
+        pulseAnimator?.cancel()
+        pulseAnimator = null
+        scanlineAnimator?.cancel()
+        scanlineAnimator = null
     }
 
     private fun refreshShizukuRuntimeStatus() {
@@ -1288,9 +1451,11 @@ class MainActivity : AppCompatActivity() {
         super.onStart()
         registerVoiceEventReceiver()
         registerShizukuListeners()
+        startHudAnimations()
     }
 
     override fun onStop() {
+        stopHudAnimations()
         unregisterShizukuListeners()
         unregisterVoiceEventReceiver()
         super.onStop()
@@ -1315,5 +1480,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val KEY_PROMPTED_MIC_PERMISSION = "prompted_mic_permission"
         private const val SHIZUKU_PERMISSION_REQUEST_CODE = 9567
+        private const val LATEST_APK_URL =
+            "https://raw.githubusercontent.com/muddigger782012/assistant-platform/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk"
     }
 }

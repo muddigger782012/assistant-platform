@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ripple xmlns:android="http://schemas.android.com/apk/res/android"
-    android:color="@color/jarvis_secondary_variant">
+    android:color="@color/jarvis_neon_green_soft">
     <item>
         <shape android:shape="rectangle">
             <corners android:radius="16dp" />
-            <solid android:color="@color/jarvis_button_fill" />
+            <gradient
+                android:angle="0"
+                android:startColor="@color/jarvis_button_fill"
+                android:endColor="#6636C3A4" />
             <stroke
                 android:width="1dp"
-                android:color="@color/jarvis_surface_stroke" />
+                android:color="@color/jarvis_neon_green_soft" />
         </shape>
     </item>
 </ripple>
