@@ -48,14 +48,83 @@
         </LinearLayout>
     </LinearLayout>
 
-    <com.google.android.material.tabs.TabLayout
-        style="@style/Widget.AssistantPlatform.TabLayout"
-        android:id="@+id/tabMenu"
+    <HorizontalScrollView
+        android:id="@+id/headerTabScroller"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
-        app:tabMode="scrollable" />
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/headerTabContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btnHeaderAssistant"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:text="@string/tab_assistant" />
+
+            <Button
+                android:id="@+id/btnHeaderProject"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:text="@string/tab_project" />
+
+            <Button
+                android:id="@+id/btnHeaderShizuku"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:text="@string/tab_shizuku" />
+
+            <Button
+                android:id="@+id/btnHeaderStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:text="@string/tab_status" />
+
+            <Button
+                android:id="@+id/btnHeaderTerminal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:text="@string/tab_terminal" />
+
+            <Button
+                android:id="@+id/btnHeaderAudit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:text="@string/tab_audit" />
+
+            <Button
+                android:id="@+id/btnHeaderVoice"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:text="@string/tab_voice" />
+
+            <Button
+                android:id="@+id/btnHeaderPermissions"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp"
+                android:text="@string/tab_permissions" />
+
+            <Button
+                android:id="@+id/btnHeaderDhizuku"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/tab_dhizuku" />
+        </LinearLayout>
+    </HorizontalScrollView>
 
     <FrameLayout
         android:id="@+id/tabContainer"

@@ -69,7 +69,6 @@ import com.assistant.core.storage.AuditRepository
 import com.assistant.core.storage.Database
 import com.assistant.core.storage.ProjectRepository
 import com.google.android.material.switchmaterial.SwitchMaterial
-import com.google.android.material.tabs.TabLayout
 import com.rosan.dhizuku.api.Dhizuku
 import rikka.shizuku.Shizuku
 import java.io.File
@@ -135,7 +134,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnLockNow: Button
     private lateinit var btnRebootFromDhizuku: Button
 
-    private lateinit var tabLayout: TabLayout
+    private lateinit var headerTabButtons: List<Button>
     private lateinit var tabContainer: FrameLayout
     private lateinit var tabSections: List<View>
     private lateinit var hudPulseOverlay: View
@@ -171,6 +170,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingClarification: String? = null
     private var runningTerminalCommand: RunningShizukuCommand? = null
     private var updateInProgress = false
+    private var currentTabIndex = 0
     private var pulseAnimator: ObjectAnimator? = null
     private var scanlineAnimator: ObjectAnimator? = null
 
@@ -304,7 +304,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         bindUiListeners()
-        applyMicroInteractions(tabContainer)
+        applyMicroInteractions(findViewById(android.R.id.content))
         reloadVoiceConfiguration(showStatus = true)
         refreshPrivilegeCenter()
         refreshSpecialPermissionsStatus()
@@ -319,7 +319,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun initViews() {
-        tabLayout = findViewById(R.id.tabMenu)
         tabContainer = findViewById(R.id.tabContainer)
         tabSections = listOf(
             findViewById(R.id.tabAssistantSection),
@@ -331,6 +330,17 @@ class MainActivity : AppCompatActivity() {
             findViewById(R.id.tabVoiceSection),
             findViewById(R.id.tabPermissionsSection),
             findViewById(R.id.tabDhizukuSection)
+        )
+        headerTabButtons = listOf(
+            findViewById(R.id.btnHeaderAssistant),
+            findViewById(R.id.btnHeaderProject),
+            findViewById(R.id.btnHeaderShizuku),
+            findViewById(R.id.btnHeaderStatus),
+            findViewById(R.id.btnHeaderTerminal),
+            findViewById(R.id.btnHeaderAudit),
+            findViewById(R.id.btnHeaderVoice),
+            findViewById(R.id.btnHeaderPermissions),
+            findViewById(R.id.btnHeaderDhizuku)
         )
 
         commandInput = findViewById(R.id.etCommandInput)
@@ -390,29 +400,57 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupTabs() {
-        val titles = listOf(
-            getString(R.string.tab_assistant),
-            getString(R.string.tab_project),
-            getString(R.string.tab_shizuku),
-            getString(R.string.tab_status),
-            getString(R.string.tab_terminal),
-            getString(R.string.tab_audit),
-            getString(R.string.tab_voice),
-            getString(R.string.tab_permissions),
-            getString(R.string.tab_dhizuku)
-        )
-        titles.forEach { tabLayout.addTab(tabLayout.newTab().setText(it)) }
+        headerTabButtons.forEachIndexed { index, button ->
+            button.setOnClickListener { showTab(index) }
+        }
+        bindSwipeNavigation()
         showTab(0)
-        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
-            override fun onTabSelected(tab: TabLayout.Tab) = showTab(tab.position)
-            override fun onTabUnselected(tab: TabLayout.Tab) = Unit
-            override fun onTabReselected(tab: TabLayout.Tab) = Unit
-        })
     }
 
     private fun showTab(index: Int) {
+        if (index !in tabSections.indices) return
+        currentTabIndex = index
         tabSections.forEachIndexed { i, view ->
             view.visibility = if (i == index) View.VISIBLE else View.GONE
+        }
+        val activeColor = ContextCompat.getColor(this, R.color.jarvis_neon_green)
+        val inactiveColor = ContextCompat.getColor(this, R.color.jarvis_on_dark)
+        headerTabButtons.forEachIndexed { i, button ->
+            val isActive = i == index
+            button.isSelected = isActive
+            button.setTextColor(if (isActive) activeColor else inactiveColor)
+            button.alpha = if (isActive) 1f else 0.85f
+            button.scaleX = if (isActive) 1.04f else 1f
+            button.scaleY = if (isActive) 1.04f else 1f
+        }
+    }
+
+    private fun bindSwipeNavigation() {
+        tabSections.forEach { section ->
+            var downX = 0f
+            var downY = 0f
+            section.setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        downX = event.x
+                        downY = event.y
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        val dx = event.x - downX
+                        val dy = event.y - downY
+                        val isHorizontalSwipe = kotlin.math.abs(dx) > 120f &&
+                            kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f
+                        if (isHorizontalSwipe) {
+                            if (dx < 0) {
+                                showTab((currentTabIndex + 1).coerceAtMost(tabSections.lastIndex))
+                            } else {
+                                showTab((currentTabIndex - 1).coerceAtLeast(0))
+                            }
+                        }
+                    }
+                }
+                false
+            }
         }
     }
 
