@@ -2,6 +2,7 @@ package com.assistant.core
 
 import android.Manifest
 import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.app.AlarmManager
 import android.app.AppOpsManager
 import android.content.ClipData
@@ -36,6 +37,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import com.assistant.core.adapters.DhizukuAdapter
 import com.assistant.core.adapters.ShizukuAdapter
 import com.assistant.core.adapters.SpecialAccessAdapter
@@ -175,9 +177,9 @@ class MainActivity : AppCompatActivity() {
     private var currentTabIndex = 0
     private var dragStartRawX = 0f
     private var dragStartRawY = 0f
-    private var dragCurrentDx = 0f
     private var isHorizontalDragPaging = false
     private var dragTargetTabIndex = -1
+    private var headerSelectionAnimator: ValueAnimator? = null
     private var pulseAnimator: ObjectAnimator? = null
     private var scanlineAnimator: ObjectAnimator? = null
     private var velocityTracker: VelocityTracker? = null
@@ -440,8 +442,8 @@ class MainActivity : AppCompatActivity() {
                 view.alpha = 1f
                 view.visibility = if (i == index) View.VISIBLE else View.GONE
             }
+            updateHeaderSelection(index)
         }
-        updateHeaderSelection(index)
     }
 
     private fun animateTabTransition(fromIndex: Int, toIndex: Int, direction: Int) {
@@ -486,10 +488,16 @@ class MainActivity : AppCompatActivity() {
             .alpha(1f)
             .setDuration(TAB_TRANSITION_DURATION_MS)
             .setInterpolator(AccelerateDecelerateInterpolator())
+            .withEndAction {
+                updateHeaderSelection(toIndex)
+            }
             .start()
+
+        animateHeaderSelection(fromIndex, toIndex, TAB_TRANSITION_DURATION_MS)
     }
 
     private fun updateHeaderSelection(index: Int) {
+        headerSelectionAnimator?.cancel()
         val activeColor = ContextCompat.getColor(this, R.color.jarvis_neon_green)
         val inactiveColor = ContextCompat.getColor(this, R.color.jarvis_on_dark)
         headerTabButtons.forEachIndexed { i, button ->
@@ -499,6 +507,59 @@ class MainActivity : AppCompatActivity() {
             button.alpha = if (isActive) 1f else 0.85f
             button.scaleX = if (isActive) 1.04f else 1f
             button.scaleY = if (isActive) 1.04f else 1f
+        }
+    }
+
+    private fun animateHeaderSelection(fromIndex: Int, toIndex: Int, durationMs: Long) {
+        if (fromIndex !in headerTabButtons.indices || toIndex !in headerTabButtons.indices || fromIndex == toIndex) {
+            updateHeaderSelection(toIndex)
+            return
+        }
+        headerSelectionAnimator?.cancel()
+        val activeColor = ContextCompat.getColor(this, R.color.jarvis_neon_green)
+        val inactiveColor = ContextCompat.getColor(this, R.color.jarvis_on_dark)
+        headerSelectionAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = durationMs
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { animator ->
+                val progress = animator.animatedValue as Float
+                updateHeaderDragProgress(fromIndex, toIndex, progress, activeColor, inactiveColor)
+            }
+            start()
+        }
+    }
+
+    private fun updateHeaderDragProgress(
+        fromIndex: Int,
+        toIndex: Int,
+        progress: Float,
+        activeColor: Int = ContextCompat.getColor(this, R.color.jarvis_neon_green),
+        inactiveColor: Int = ContextCompat.getColor(this, R.color.jarvis_on_dark)
+    ) {
+        val p = progress.coerceIn(0f, 1f)
+        headerTabButtons.forEachIndexed { index, button ->
+            when (index) {
+                fromIndex -> {
+                    button.setTextColor(ColorUtils.blendARGB(activeColor, inactiveColor, p))
+                    button.alpha = 1f - (0.15f * p)
+                    val scale = 1.04f - (0.04f * p)
+                    button.scaleX = scale
+                    button.scaleY = scale
+                }
+                toIndex -> {
+                    button.setTextColor(ColorUtils.blendARGB(inactiveColor, activeColor, p))
+                    button.alpha = 0.85f + (0.15f * p)
+                    val scale = 1f + (0.04f * p)
+                    button.scaleX = scale
+                    button.scaleY = scale
+                }
+                else -> {
+                    button.setTextColor(inactiveColor)
+                    button.alpha = 0.85f
+                    button.scaleX = 1f
+                    button.scaleY = 1f
+                }
+            }
         }
     }
 
@@ -525,7 +586,6 @@ class MainActivity : AppCompatActivity() {
             MotionEvent.ACTION_DOWN -> {
                 dragStartRawX = event.rawX
                 dragStartRawY = event.rawY
-                dragCurrentDx = 0f
                 isHorizontalDragPaging = false
                 dragTargetTabIndex = -1
                 velocityTracker?.recycle()
@@ -535,7 +595,6 @@ class MainActivity : AppCompatActivity() {
                 velocityTracker?.addMovement(event)
                 val dx = event.rawX - dragStartRawX
                 val dy = event.rawY - dragStartRawY
-                dragCurrentDx = dx
 
                 if (!isHorizontalDragPaging) {
                     val enoughHorizontalIntent = kotlin.math.abs(dx) > touchSlop &&
@@ -543,7 +602,12 @@ class MainActivity : AppCompatActivity() {
                     if (!enoughHorizontalIntent) return false
                     val direction = if (dx < 0f) 1 else -1
                     val target = (currentTabIndex + direction).coerceIn(0, tabSections.lastIndex)
-                    if (target == currentTabIndex) return false
+                    if (target == currentTabIndex) {
+                        // At page edge: consume horizontal gesture so it doesn't trigger app/system back gesture.
+                        isHorizontalDragPaging = true
+                        dragTargetTabIndex = currentTabIndex
+                        return true
+                    }
                     beginDragPaging(target)
                     isHorizontalDragPaging = true
                 }
@@ -581,10 +645,12 @@ class MainActivity : AppCompatActivity() {
         targetView.alpha = 0.86f
         currentView.translationX = 0f
         currentView.alpha = 1f
+        updateHeaderDragProgress(currentTabIndex, targetIndex, 0f)
     }
 
     private fun updateDragPaging(dx: Float) {
         if (dragTargetTabIndex !in tabSections.indices) return
+        if (dragTargetTabIndex == currentTabIndex) return
         val width = tabContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
         val currentView = tabSections[currentTabIndex]
         val targetView = tabSections[dragTargetTabIndex]
@@ -602,10 +668,15 @@ class MainActivity : AppCompatActivity() {
         val progress = (kotlin.math.abs(clampedDx) / width.toFloat()).coerceIn(0f, 1f)
         currentView.alpha = (1f - (progress * 0.22f)).coerceIn(0.75f, 1f)
         targetView.alpha = (0.82f + (progress * 0.18f)).coerceIn(0.82f, 1f)
+        updateHeaderDragProgress(currentTabIndex, dragTargetTabIndex, progress)
     }
 
     private fun finishDragPaging(cancel: Boolean, velocityX: Float) {
         if (dragTargetTabIndex !in tabSections.indices) return
+        if (dragTargetTabIndex == currentTabIndex) {
+            updateHeaderSelection(currentTabIndex)
+            return
+        }
         val width = tabContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
         val currentView = tabSections[currentTabIndex]
         val targetView = tabSections[dragTargetTabIndex]
@@ -667,7 +738,6 @@ class MainActivity : AppCompatActivity() {
         velocityTracker = null
         dragTargetTabIndex = -1
         isHorizontalDragPaging = false
-        dragCurrentDx = 0f
     }
 
     private fun isTouchInsideTabContainer(event: MotionEvent): Boolean {
@@ -978,6 +1048,7 @@ class MainActivity : AppCompatActivity() {
             readTimeout = 60000
             requestMethod = "GET"
             doInput = true
+            setRequestProperty("User-Agent", "JARVIS-Updater/2.0")
             connect()
         }
         try {
@@ -995,6 +1066,9 @@ class MainActivity : AppCompatActivity() {
                     output.flush()
                 }
             }
+            if (!targetFile.exists() || targetFile.length() < MIN_VALID_APK_BYTES) {
+                throw IllegalStateException("Downloaded APK appears invalid.")
+            }
         } finally {
             connection.disconnect()
         }
@@ -1007,13 +1081,24 @@ class MainActivity : AppCompatActivity() {
             return
         }
         val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apkFile)
-        val installIntent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
+        val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+            data = uri
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
         }
-        startActivity(installIntent)
-        setUpdateStatus("Installer opened. Confirm installation to complete upgrade.")
+        try {
+            startActivity(installIntent)
+            setUpdateStatus("Installer opened. Confirm installation to complete update.")
+        } catch (_: Throwable) {
+            val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(fallbackIntent)
+            setUpdateStatus("Installer opened. Confirm installation to complete update.")
+        }
     }
 
     private fun setUpdateStatus(text: String) {
@@ -1748,6 +1833,7 @@ class MainActivity : AppCompatActivity() {
         private const val TAB_TRANSITION_DURATION_MS = 220L
         private const val SWIPE_VELOCITY_THRESHOLD = 900f
         private const val DRAG_PAGE_PROGRESS_THRESHOLD = 0.24f
+        private const val MIN_VALID_APK_BYTES = 250_000L
         private const val LATEST_APK_URL =
             "https://raw.githubusercontent.com/muddigger782012/assistant-platform/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk"
     }
