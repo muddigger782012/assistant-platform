@@ -20,6 +20,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.os.UserManager
 import android.provider.Settings
+import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -401,18 +402,86 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupTabs() {
         headerTabButtons.forEachIndexed { index, button ->
-            button.setOnClickListener { showTab(index) }
+            button.setOnClickListener {
+                val direction = when {
+                    index > currentTabIndex -> 1
+                    index < currentTabIndex -> -1
+                    else -> 0
+                }
+                showTab(index, animate = true, direction = direction)
+            }
         }
         bindSwipeNavigation()
-        showTab(0)
+        showTab(0, animate = false, direction = 0)
     }
 
-    private fun showTab(index: Int) {
+    private fun showTab(index: Int, animate: Boolean, direction: Int) {
         if (index !in tabSections.indices) return
-        currentTabIndex = index
-        tabSections.forEachIndexed { i, view ->
-            view.visibility = if (i == index) View.VISIBLE else View.GONE
+        if (index == currentTabIndex && tabSections[index].visibility == View.VISIBLE) {
+            updateHeaderSelection(index)
+            return
         }
+        val previousIndex = currentTabIndex
+        currentTabIndex = index
+        if (animate && previousIndex in tabSections.indices && previousIndex != index) {
+            animateTabTransition(fromIndex = previousIndex, toIndex = index, direction = direction)
+        } else {
+            tabSections.forEachIndexed { i, view ->
+                view.animate().cancel()
+                view.translationX = 0f
+                view.alpha = 1f
+                view.visibility = if (i == index) View.VISIBLE else View.GONE
+            }
+        }
+        updateHeaderSelection(index)
+    }
+
+    private fun animateTabTransition(fromIndex: Int, toIndex: Int, direction: Int) {
+        val fromView = tabSections[fromIndex]
+        val toView = tabSections[toIndex]
+        tabSections.forEachIndexed { i, view ->
+            if (i != fromIndex && i != toIndex) {
+                view.animate().cancel()
+                view.visibility = View.GONE
+                view.translationX = 0f
+                view.alpha = 1f
+            }
+        }
+        fromView.animate().cancel()
+        toView.animate().cancel()
+
+        val width = tabContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val offset = when {
+            direction > 0 -> width.toFloat()
+            direction < 0 -> -width.toFloat()
+            else -> width.toFloat()
+        }
+
+        toView.translationX = offset
+        toView.alpha = 0.85f
+        toView.visibility = View.VISIBLE
+
+        fromView.animate()
+            .translationX(-offset)
+            .alpha(0f)
+            .setDuration(TAB_TRANSITION_DURATION_MS)
+            .setInterpolator(AccelerateDecelerateInterpolator())
+            .withEndAction {
+                fromView.visibility = View.GONE
+                fromView.translationX = 0f
+                fromView.alpha = 1f
+            }
+            .start()
+
+        toView.animate()
+            .translationX(0f)
+            .alpha(1f)
+            .setDuration(TAB_TRANSITION_DURATION_MS)
+            .setInterpolator(AccelerateDecelerateInterpolator())
+            .start()
+    }
+
+    private fun updateHeaderSelection(index: Int) {
         val activeColor = ContextCompat.getColor(this, R.color.jarvis_neon_green)
         val inactiveColor = ContextCompat.getColor(this, R.color.jarvis_on_dark)
         headerTabButtons.forEachIndexed { i, button ->
@@ -426,32 +495,49 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindSwipeNavigation() {
-        tabSections.forEach { section ->
-            var downX = 0f
-            var downY = 0f
-            section.setOnTouchListener { _, event ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        downX = event.x
-                        downY = event.y
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        val dx = event.x - downX
-                        val dy = event.y - downY
-                        val isHorizontalSwipe = kotlin.math.abs(dx) > 120f &&
-                            kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f
-                        if (isHorizontalSwipe) {
-                            if (dx < 0) {
-                                showTab((currentTabIndex + 1).coerceAtMost(tabSections.lastIndex))
-                            } else {
-                                showTab((currentTabIndex - 1).coerceAtLeast(0))
-                            }
-                        }
-                    }
+        val swipeDistanceThreshold = 72f * resources.displayMetrics.density
+        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(event: MotionEvent): Boolean = true
+
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                if (e1 == null) return false
+                val dx = e2.x - e1.x
+                val dy = e2.y - e1.y
+                val horizontalIntent = kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f
+                val qualifiesForFling = horizontalIntent &&
+                    kotlin.math.abs(dx) >= swipeDistanceThreshold &&
+                    kotlin.math.abs(velocityX) >= SWIPE_VELOCITY_THRESHOLD
+                if (!qualifiesForFling) return false
+
+                if (dx < 0) {
+                    goToAdjacentTab(1)
+                } else {
+                    goToAdjacentTab(-1)
                 }
+                return true
+            }
+        })
+        tabSections.forEach { section ->
+            section.setOnTouchListener { _, event ->
+                detector.onTouchEvent(event)
                 false
             }
         }
+    }
+
+    private fun goToAdjacentTab(delta: Int) {
+        val target = (currentTabIndex + delta).coerceIn(0, tabSections.lastIndex)
+        if (target == currentTabIndex) return
+        showTab(
+            index = target,
+            animate = true,
+            direction = if (delta > 0) 1 else -1
+        )
     }
 
     private fun bindUiListeners() {
@@ -1518,6 +1604,8 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val KEY_PROMPTED_MIC_PERMISSION = "prompted_mic_permission"
         private const val SHIZUKU_PERMISSION_REQUEST_CODE = 9567
+        private const val TAB_TRANSITION_DURATION_MS = 220L
+        private const val SWIPE_VELOCITY_THRESHOLD = 900f
         private const val LATEST_APK_URL =
             "https://raw.githubusercontent.com/muddigger782012/assistant-platform/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk"
     }
