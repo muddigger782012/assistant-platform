@@ -3,25 +3,28 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@drawable/bg_jarvis_space"
     android:orientation="vertical">
 
     <com.google.android.material.tabs.TabLayout
+        style="@style/Widget.AssistantPlatform.TabLayout"
         android:id="@+id/tabMenu"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="?attr/colorSurface"
         app:tabMode="scrollable" />
 
     <FrameLayout
         android:id="@+id/tabContainer"
         android:layout_width="match_parent"
         android:layout_height="0dp"
+        android:padding="8dp"
         android:layout_weight="1">
 
         <ScrollView
             android:id="@+id/tabAssistantSection"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:background="@drawable/glass_panel_surface"
             android:padding="16dp"
             android:visibility="visible">
 
@@ -73,6 +76,7 @@
             android:id="@+id/tabProjectSection"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:background="@drawable/glass_panel_surface"
             android:padding="16dp"
             android:visibility="gone">
 
@@ -99,6 +103,7 @@
             android:id="@+id/tabShizukuSection"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:background="@drawable/glass_panel_surface"
             android:padding="16dp"
             android:visibility="gone">
 
@@ -118,7 +123,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:background="#10000000"
+                    android:background="@drawable/glass_output_surface"
                     android:padding="8dp"
                     android:textIsSelectable="true"
                     android:textSize="12sp" />
@@ -166,6 +171,7 @@
             android:id="@+id/tabStatusSection"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:background="@drawable/glass_panel_surface"
             android:padding="16dp"
             android:visibility="gone">
 
@@ -194,6 +200,7 @@
             android:id="@+id/tabTerminalSection"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:background="@drawable/glass_panel_surface"
             android:padding="16dp"
             android:visibility="gone">
 
@@ -250,7 +257,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="200dp"
                     android:layout_marginTop="8dp"
-                    android:background="#10000000"
+                    android:background="@drawable/glass_output_surface"
                     android:padding="8dp"
                     android:textIsSelectable="true"
                     android:textSize="12sp" />
@@ -267,7 +274,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:background="#10000000"
+                    android:background="@drawable/glass_output_surface"
                     android:padding="8dp"
                     android:textIsSelectable="true"
                     android:textSize="12sp" />
@@ -278,6 +285,7 @@
             android:id="@+id/tabAuditSection"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:background="@drawable/glass_panel_surface"
             android:padding="16dp"
             android:visibility="gone">
 
@@ -353,7 +361,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:background="#10000000"
+                    android:background="@drawable/glass_output_surface"
                     android:padding="8dp"
                     android:textIsSelectable="true"
                     android:textSize="12sp" />
@@ -364,6 +372,7 @@
             android:id="@+id/tabVoiceSection"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:background="@drawable/glass_panel_surface"
             android:padding="16dp"
             android:visibility="gone">
 
@@ -413,6 +422,7 @@
             android:id="@+id/tabPermissionsSection"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:background="@drawable/glass_panel_surface"
             android:padding="16dp"
             android:visibility="gone">
 
@@ -504,6 +514,7 @@
             android:id="@+id/tabDhizukuSection"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:background="@drawable/glass_panel_surface"
             android:padding="16dp"
             android:visibility="gone">
 
@@ -545,7 +556,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:background="#10000000"
+                    android:background="@drawable/glass_output_surface"
                     android:padding="8dp"
                     android:textIsSelectable="true"
                     android:textSize="12sp" />
