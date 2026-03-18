@@ -21,6 +21,7 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.os.UserManager
 import android.provider.Settings
+import android.graphics.Rect
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -575,10 +576,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleDragPagingTouch(event: MotionEvent): Boolean {
-        if (!isTouchInsideTabContainer(event)) {
-            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
-                resetDragPagingState()
-            }
+        val isDown = event.actionMasked == MotionEvent.ACTION_DOWN
+        if (!isHorizontalDragPaging && isDown && !isTouchInsideTabContainer(event)) {
+            resetDragPagingState()
             return false
         }
 
@@ -749,6 +749,21 @@ class MainActivity : AppCompatActivity() {
             x <= location[0] + tabContainer.width &&
             y >= location[1] &&
             y <= location[1] + tabContainer.height
+    }
+
+    private fun updateSystemGestureExclusionRects() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        if (tabContainer.width > 0 && tabContainer.height > 0) {
+            tabContainer.systemGestureExclusionRects = listOf(
+                Rect(0, 0, tabContainer.width, tabContainer.height)
+            )
+        }
+        val scroller = findViewById<View>(R.id.headerTabScroller)
+        if (scroller.width > 0 && scroller.height > 0) {
+            scroller.systemGestureExclusionRects = listOf(
+                Rect(0, 0, scroller.width, scroller.height)
+            )
+        }
     }
 
     private fun bindUiListeners() {
@@ -1818,6 +1833,14 @@ class MainActivity : AppCompatActivity() {
         refreshSpecialPermissionsStatus()
         refreshShizukuRuntimeStatus()
         refreshAuditDebugSection()
+        tabContainer.post { updateSystemGestureExclusionRects() }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            tabContainer.post { updateSystemGestureExclusionRects() }
+        }
     }
 
     override fun onDestroy() {
