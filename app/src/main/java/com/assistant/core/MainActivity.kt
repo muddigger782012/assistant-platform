@@ -81,6 +81,7 @@ import com.rosan.dhizuku.api.Dhizuku
 import rikka.shizuku.Shizuku
 import java.io.File
 import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
@@ -570,43 +571,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindSwipeNavigation() {
-        val swipeDistanceThreshold = 64f * resources.displayMetrics.density
-        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: MotionEvent): Boolean = true
-
-            override fun onFling(
-                e1: MotionEvent?,
-                e2: MotionEvent,
-                velocityX: Float,
-                velocityY: Float
-            ): Boolean {
-                if (!allowSwipeForCurrentTouch || e1 == null) return false
-                val dx = e2.rawX - e1.rawX
-                val dy = e2.rawY - e1.rawY
-                val horizontalIntent = kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f
-                val qualifies = horizontalIntent &&
-                    kotlin.math.abs(dx) >= swipeDistanceThreshold &&
-                    kotlin.math.abs(velocityX) >= SWIPE_VELOCITY_THRESHOLD
-                if (!qualifies) return false
-
-                val delta = if (dx < 0f) 1 else -1
-                val target = (currentTabIndex + delta).coerceIn(0, tabSections.lastIndex)
-                if (target == currentTabIndex) return false
-                showTab(target, animate = true, direction = delta)
-                return true
-            }
-        })
-        swipeGestureDetector = detector
-
-        tabSections.forEach { section ->
-            section.setOnTouchListener { _, event ->
-                if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-                    allowSwipeForCurrentTouch = isSwipeAllowedForTouchStart(event)
-                }
-                detector.onTouchEvent(event)
-                false
-            }
-        }
+        // Reliability mode: disable swipe interception so controls remain fully responsive.
+        swipeGestureDetector = null
+        tabSections.forEach { section -> section.setOnTouchListener(null) }
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
@@ -1128,7 +1095,8 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (error: Throwable) {
                 runOnUiThread {
-                    setUpdateStatus("Update failed: ${error.message ?: "unknown error"}")
+                    setUpdateStatus("Direct update unavailable. Opening browser download fallback...")
+                    openBrowserUpdateFallback()
                 }
             } finally {
                 runOnUiThread {
@@ -1166,6 +1134,10 @@ class MainActivity : AppCompatActivity() {
             if (connection.responseCode !in 200..299) {
                 throw IllegalStateException("HTTP ${connection.responseCode}")
             }
+            val contentType = connection.contentType.orEmpty().lowercase(Locale.getDefault())
+            if (contentType.contains("text/html")) {
+                throw IllegalStateException("received HTML instead of APK")
+            }
             connection.inputStream.use { input ->
                 FileOutputStream(targetFile, false).use { output ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
@@ -1180,11 +1152,39 @@ class MainActivity : AppCompatActivity() {
             if (!targetFile.exists() || targetFile.length() < MIN_VALID_APK_BYTES) {
                 throw IllegalStateException("Downloaded APK appears invalid.")
             }
+            if (!isLikelyApkZip(targetFile)) {
+                throw IllegalStateException("Downloaded file is not an APK archive.")
+            }
         } catch (error: Throwable) {
             targetFile.delete()
             throw error
         } finally {
             connection.disconnect()
+        }
+    }
+
+    private fun isLikelyApkZip(file: File): Boolean {
+        if (!file.exists() || file.length() < 4) return false
+        return try {
+            RandomAccessFile(file, "r").use { raf ->
+                val b0 = raf.read()
+                val b1 = raf.read()
+                b0 == 0x50 && b1 == 0x4B // PK
+            }
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun openBrowserUpdateFallback() {
+        val fallback = Intent(Intent.ACTION_VIEW, Uri.parse(BROWSER_UPDATE_URL)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            startActivity(fallback)
+            setUpdateStatus("Browser opened for authenticated update download.")
+        } catch (error: Throwable) {
+            setUpdateStatus("Update failed: ${error.message ?: "could not open browser fallback"}")
         }
     }
 
@@ -1962,5 +1962,7 @@ class MainActivity : AppCompatActivity() {
             "https://github.com/muddigger782012/assistant-platform/raw/refs/heads/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk",
             "https://github.com/muddigger782012/assistant-platform/raw/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk"
         )
+        private const val BROWSER_UPDATE_URL =
+            "https://github.com/muddigger782012/assistant-platform/blob/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk?raw=1"
     }
 }
