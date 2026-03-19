@@ -146,6 +146,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var headerTabButtons: List<Button>
     private lateinit var tabContainer: FrameLayout
     private lateinit var tabSections: List<View>
+    private lateinit var tabBindings: List<TabBinding>
     private lateinit var hudPulseOverlay: View
     private lateinit var scanlineView: View
 
@@ -338,28 +339,46 @@ class MainActivity : AppCompatActivity() {
 
     private fun initViews() {
         tabContainer = findViewById(R.id.tabContainer)
-        tabSections = listOf(
-            findViewById(R.id.tabAssistantSection),
-            findViewById(R.id.tabProjectSection),
-            findViewById(R.id.tabShizukuSection),
-            findViewById(R.id.tabStatusSection),
-            findViewById(R.id.tabTerminalSection),
-            findViewById(R.id.tabAuditSection),
-            findViewById(R.id.tabVoiceSection),
-            findViewById(R.id.tabPermissionsSection),
-            findViewById(R.id.tabDhizukuSection)
+        tabBindings = listOf(
+            TabBinding(
+                findViewById(R.id.btnHeaderAssistant),
+                findViewById(R.id.tabAssistantSection)
+            ),
+            TabBinding(
+                findViewById(R.id.btnHeaderProject),
+                findViewById(R.id.tabProjectSection)
+            ),
+            TabBinding(
+                findViewById(R.id.btnHeaderShizuku),
+                findViewById(R.id.tabShizukuSection)
+            ),
+            TabBinding(
+                findViewById(R.id.btnHeaderStatus),
+                findViewById(R.id.tabStatusSection)
+            ),
+            TabBinding(
+                findViewById(R.id.btnHeaderTerminal),
+                findViewById(R.id.tabTerminalSection)
+            ),
+            TabBinding(
+                findViewById(R.id.btnHeaderAudit),
+                findViewById(R.id.tabAuditSection)
+            ),
+            TabBinding(
+                findViewById(R.id.btnHeaderVoice),
+                findViewById(R.id.tabVoiceSection)
+            ),
+            TabBinding(
+                findViewById(R.id.btnHeaderPermissions),
+                findViewById(R.id.tabPermissionsSection)
+            ),
+            TabBinding(
+                findViewById(R.id.btnHeaderDhizuku),
+                findViewById(R.id.tabDhizukuSection)
+            )
         )
-        headerTabButtons = listOf(
-            findViewById(R.id.btnHeaderAssistant),
-            findViewById(R.id.btnHeaderProject),
-            findViewById(R.id.btnHeaderShizuku),
-            findViewById(R.id.btnHeaderStatus),
-            findViewById(R.id.btnHeaderTerminal),
-            findViewById(R.id.btnHeaderAudit),
-            findViewById(R.id.btnHeaderVoice),
-            findViewById(R.id.btnHeaderPermissions),
-            findViewById(R.id.btnHeaderDhizuku)
-        )
+        headerTabButtons = tabBindings.map { it.button }
+        tabSections = tabBindings.map { it.section }
 
         commandInput = findViewById(R.id.etCommandInput)
         shizukuCommandInput = findViewById(R.id.etShizukuCommand)
@@ -418,8 +437,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupTabs() {
-        headerTabButtons.forEachIndexed { index, button ->
-            button.setOnClickListener {
+        tabBindings.forEachIndexed { index, binding ->
+            binding.button.setOnClickListener {
                 val direction = when {
                     index > currentTabIndex -> 1
                     index < currentTabIndex -> -1
@@ -1965,4 +1984,9 @@ class MainActivity : AppCompatActivity() {
         private const val BROWSER_UPDATE_URL =
             "https://github.com/muddigger782012/assistant-platform/blob/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk?raw=1"
     }
+
+    private data class TabBinding(
+        val button: Button,
+        val section: View
+    )
 }
