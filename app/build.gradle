@@ -11,8 +11,8 @@ android {
         applicationId "com.assistant.core"
         minSdk 26
         targetSdk 34
-        versionCode 19
-        versionName "2.8"
+        versionCode 20
+        versionName "2.9"
     }
 
     buildTypes {
@@ -40,7 +40,6 @@ dependencies {
     implementation 'com.google.android.material:material:1.12.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'androidx.activity:activity-ktx:1.9.2'
-    implementation 'androidx.viewpager2:viewpager2:1.1.0'
 
     implementation 'dev.rikka.shizuku:api:13.1.5'
     implementation 'dev.rikka.shizuku:provider:13.1.5'

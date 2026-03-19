@@ -24,12 +24,16 @@ import android.provider.Settings
 import android.graphics.Rect
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.VelocityTracker
+import android.view.GestureDetector
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.SeekBar
 import android.widget.ScrollView
 import android.widget.TextView
@@ -38,8 +42,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
-import androidx.recyclerview.widget.RecyclerView
-import androidx.viewpager2.widget.ViewPager2
 import com.assistant.core.adapters.DhizukuAdapter
 import com.assistant.core.adapters.ShizukuAdapter
 import com.assistant.core.adapters.SpecialAccessAdapter
@@ -144,7 +146,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var headerTabButtons: List<Button>
     private lateinit var tabContainer: FrameLayout
     private lateinit var tabSections: List<View>
-    private lateinit var tabPager: ViewPager2
     private lateinit var hudPulseOverlay: View
     private lateinit var scanlineView: View
 
@@ -179,10 +180,17 @@ class MainActivity : AppCompatActivity() {
     private var runningTerminalCommand: RunningShizukuCommand? = null
     private var updateInProgress = false
     private var currentTabIndex = 0
+    private var dragStartRawX = 0f
+    private var dragStartRawY = 0f
+    private var isHorizontalDragPaging = false
+    private var dragTargetTabIndex = -1
+    private var allowSwipeForCurrentTouch = true
     private var headerSelectionAnimator: ValueAnimator? = null
     private var pulseAnimator: ObjectAnimator? = null
     private var scanlineAnimator: ObjectAnimator? = null
-    private var tabPagerCallback: ViewPager2.OnPageChangeCallback? = null
+    private var swipeGestureDetector: GestureDetector? = null
+    private var velocityTracker: VelocityTracker? = null
+    private val touchSlop by lazy { ViewConfiguration.get(this).scaledTouchSlop.toFloat() }
 
     private val shizukuBinderReceivedListener = Shizuku.OnBinderReceivedListener {
         runOnUiThread {
@@ -412,70 +420,87 @@ class MainActivity : AppCompatActivity() {
     private fun setupTabs() {
         headerTabButtons.forEachIndexed { index, button ->
             button.setOnClickListener {
-                showTab(index, animate = true)
+                val direction = when {
+                    index > currentTabIndex -> 1
+                    index < currentTabIndex -> -1
+                    else -> 0
+                }
+                showTab(index, animate = true, direction = direction)
             }
         }
-        initializeTabPager()
         bindSwipeNavigation()
-        showTab(0, animate = false)
+        showTab(0, animate = false, direction = 0)
     }
 
-    private fun showTab(index: Int, animate: Boolean) {
+    private fun showTab(index: Int, animate: Boolean, direction: Int) {
         if (index !in tabSections.indices) return
-        if (!::tabPager.isInitialized) {
-            currentTabIndex = index
+        if (index == currentTabIndex && tabSections[index].visibility == View.VISIBLE) {
             updateHeaderSelection(index)
             return
         }
-        if (index == currentTabIndex && tabPager.currentItem == index) {
-            updateHeaderSelection(index)
-            return
-        }
-        tabPager.setCurrentItem(index, animate)
-        if (!animate) {
-            currentTabIndex = index
+        val previousIndex = currentTabIndex
+        currentTabIndex = index
+        if (animate && previousIndex in tabSections.indices && previousIndex != index) {
+            animateTabTransition(fromIndex = previousIndex, toIndex = index, direction = direction)
+        } else {
+            tabSections.forEachIndexed { i, view ->
+                view.animate().cancel()
+                view.translationX = 0f
+                view.alpha = 1f
+                view.visibility = if (i == index) View.VISIBLE else View.GONE
+            }
             updateHeaderSelection(index)
         }
     }
 
-    private fun initializeTabPager() {
-        if (::tabPager.isInitialized) return
-
-        tabSections.forEach { section ->
-            section.animate().cancel()
-            section.visibility = View.VISIBLE
-            section.translationX = 0f
-            section.alpha = 1f
-            (section.parent as? ViewGroup)?.removeView(section)
-        }
-
-        tabPager = ViewPager2(this).apply {
-            id = View.generateViewId()
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-            offscreenPageLimit = 1
-            adapter = TabSectionPagerAdapter(tabSections)
-        }
-        tabContainer.addView(tabPager, 0)
-        (tabPager.getChildAt(0) as? RecyclerView)?.overScrollMode = View.OVER_SCROLL_NEVER
-
-        tabPagerCallback?.let { tabPager.unregisterOnPageChangeCallback(it) }
-        tabPagerCallback = object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int) {
-                val fromIndex = position.coerceIn(0, headerTabButtons.lastIndex)
-                val toIndex = (position + 1).coerceIn(0, headerTabButtons.lastIndex)
-                updateHeaderDragProgress(fromIndex, toIndex, positionOffset)
+    private fun animateTabTransition(fromIndex: Int, toIndex: Int, direction: Int) {
+        val fromView = tabSections[fromIndex]
+        val toView = tabSections[toIndex]
+        tabSections.forEachIndexed { i, view ->
+            if (i != fromIndex && i != toIndex) {
+                view.animate().cancel()
+                view.visibility = View.GONE
+                view.translationX = 0f
+                view.alpha = 1f
             }
-
-            override fun onPageSelected(position: Int) {
-                currentTabIndex = position
-                updateHeaderSelection(position)
-            }
-        }.also { callback ->
-            tabPager.registerOnPageChangeCallback(callback)
         }
+        fromView.animate().cancel()
+        toView.animate().cancel()
+
+        val width = tabContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val offset = when {
+            direction > 0 -> width.toFloat()
+            direction < 0 -> -width.toFloat()
+            else -> width.toFloat()
+        }
+
+        toView.translationX = offset
+        toView.alpha = 0.85f
+        toView.visibility = View.VISIBLE
+
+        fromView.animate()
+            .translationX(-offset)
+            .alpha(0f)
+            .setDuration(TAB_TRANSITION_DURATION_MS)
+            .setInterpolator(AccelerateDecelerateInterpolator())
+            .withEndAction {
+                fromView.visibility = View.GONE
+                fromView.translationX = 0f
+                fromView.alpha = 1f
+            }
+            .start()
+
+        toView.animate()
+            .translationX(0f)
+            .alpha(1f)
+            .setDuration(TAB_TRANSITION_DURATION_MS)
+            .setInterpolator(AccelerateDecelerateInterpolator())
+            .withEndAction {
+                updateHeaderSelection(toIndex)
+            }
+            .start()
+
+        animateHeaderSelection(fromIndex, toIndex, TAB_TRANSITION_DURATION_MS)
     }
 
     private fun updateHeaderSelection(index: Int) {
@@ -489,6 +514,25 @@ class MainActivity : AppCompatActivity() {
             button.alpha = if (isActive) 1f else 0.85f
             button.scaleX = if (isActive) 1.04f else 1f
             button.scaleY = if (isActive) 1.04f else 1f
+        }
+    }
+
+    private fun animateHeaderSelection(fromIndex: Int, toIndex: Int, durationMs: Long) {
+        if (fromIndex !in headerTabButtons.indices || toIndex !in headerTabButtons.indices || fromIndex == toIndex) {
+            updateHeaderSelection(toIndex)
+            return
+        }
+        headerSelectionAnimator?.cancel()
+        val activeColor = ContextCompat.getColor(this, R.color.jarvis_neon_green)
+        val inactiveColor = ContextCompat.getColor(this, R.color.jarvis_on_dark)
+        headerSelectionAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = durationMs
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { animator ->
+                val progress = animator.animatedValue as Float
+                updateHeaderDragProgress(fromIndex, toIndex, progress, activeColor, inactiveColor)
+            }
+            start()
         }
     }
 
@@ -527,9 +571,233 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun bindSwipeNavigation() {
-        if (::tabPager.isInitialized) {
-            tabPager.isUserInputEnabled = true
+        // Reliability mode: disable swipe interception so controls remain fully responsive.
+        swipeGestureDetector = null
+        tabSections.forEach { section -> section.setOnTouchListener(null) }
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // Keep this stable: do not globally intercept touch dispatch.
+        return super.dispatchTouchEvent(event)
+    }
+
+    private fun handleDragPagingTouch(event: MotionEvent): Boolean {
+        val isDown = event.actionMasked == MotionEvent.ACTION_DOWN
+        if (!isHorizontalDragPaging && isDown && !isTouchInsideTabContainer(event)) {
+            resetDragPagingState()
+            return false
         }
+
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                dragStartRawX = event.rawX
+                dragStartRawY = event.rawY
+                isHorizontalDragPaging = false
+                dragTargetTabIndex = -1
+                allowSwipeForCurrentTouch = isSwipeAllowedForTouchStart(event)
+                velocityTracker?.recycle()
+                velocityTracker = VelocityTracker.obtain().also { it.addMovement(event) }
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (!allowSwipeForCurrentTouch && !isHorizontalDragPaging) {
+                    return false
+                }
+                velocityTracker?.addMovement(event)
+                val dx = event.rawX - dragStartRawX
+                val dy = event.rawY - dragStartRawY
+
+                if (!isHorizontalDragPaging) {
+                    val enoughHorizontalIntent = kotlin.math.abs(dx) > touchSlop &&
+                        kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f
+                    if (!enoughHorizontalIntent) return false
+                    val direction = if (dx < 0f) 1 else -1
+                    val target = (currentTabIndex + direction).coerceIn(0, tabSections.lastIndex)
+                    if (target == currentTabIndex) {
+                        // At page edge: consume horizontal gesture so it doesn't trigger app/system back gesture.
+                        isHorizontalDragPaging = true
+                        dragTargetTabIndex = currentTabIndex
+                        return true
+                    }
+                    beginDragPaging(target)
+                    isHorizontalDragPaging = true
+                }
+
+                updateDragPaging(dx)
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                velocityTracker?.addMovement(event)
+                if (!isHorizontalDragPaging) {
+                    resetDragPagingState()
+                    return false
+                }
+                velocityTracker?.computeCurrentVelocity(1000)
+                val velocityX = velocityTracker?.xVelocity ?: 0f
+                finishDragPaging(cancel = event.actionMasked == MotionEvent.ACTION_CANCEL, velocityX = velocityX)
+                resetDragPagingState()
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun beginDragPaging(targetIndex: Int) {
+        dragTargetTabIndex = targetIndex
+        val currentView = tabSections[currentTabIndex]
+        val targetView = tabSections[targetIndex]
+        val width = tabContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val direction = if (targetIndex > currentTabIndex) 1 else -1
+
+        targetView.animate().cancel()
+        currentView.animate().cancel()
+        targetView.visibility = View.VISIBLE
+        targetView.translationX = if (direction > 0) width.toFloat() else -width.toFloat()
+        targetView.alpha = 0.86f
+        currentView.translationX = 0f
+        currentView.alpha = 1f
+        updateHeaderDragProgress(currentTabIndex, targetIndex, 0f)
+    }
+
+    private fun updateDragPaging(dx: Float) {
+        if (dragTargetTabIndex !in tabSections.indices) return
+        if (dragTargetTabIndex == currentTabIndex) return
+        val width = tabContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val currentView = tabSections[currentTabIndex]
+        val targetView = tabSections[dragTargetTabIndex]
+        val direction = if (dragTargetTabIndex > currentTabIndex) 1 else -1
+
+        val clampedDx = if (direction > 0) {
+            dx.coerceAtMost(0f).coerceAtLeast(-width.toFloat())
+        } else {
+            dx.coerceAtLeast(0f).coerceAtMost(width.toFloat())
+        }
+
+        currentView.translationX = clampedDx
+        targetView.translationX = if (direction > 0) width + clampedDx else -width + clampedDx
+
+        val progress = (kotlin.math.abs(clampedDx) / width.toFloat()).coerceIn(0f, 1f)
+        currentView.alpha = (1f - (progress * 0.22f)).coerceIn(0.75f, 1f)
+        targetView.alpha = (0.82f + (progress * 0.18f)).coerceIn(0.82f, 1f)
+        updateHeaderDragProgress(currentTabIndex, dragTargetTabIndex, progress)
+    }
+
+    private fun finishDragPaging(cancel: Boolean, velocityX: Float) {
+        if (dragTargetTabIndex !in tabSections.indices) return
+        if (dragTargetTabIndex == currentTabIndex) {
+            updateHeaderSelection(currentTabIndex)
+            return
+        }
+        val width = tabContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val currentView = tabSections[currentTabIndex]
+        val targetView = tabSections[dragTargetTabIndex]
+        val direction = if (dragTargetTabIndex > currentTabIndex) 1 else -1
+        val progress = (kotlin.math.abs(currentView.translationX) / width.toFloat()).coerceIn(0f, 1f)
+        val flingMatchesDirection = if (direction > 0) velocityX < -SWIPE_VELOCITY_THRESHOLD else velocityX > SWIPE_VELOCITY_THRESHOLD
+        val shouldComplete = !cancel && (progress >= DRAG_PAGE_PROGRESS_THRESHOLD || flingMatchesDirection)
+
+        if (shouldComplete) {
+            val exitX = if (direction > 0) -width.toFloat() else width.toFloat()
+            currentView.animate()
+                .translationX(exitX)
+                .alpha(0.78f)
+                .setDuration(TAB_TRANSITION_DURATION_MS)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withEndAction {
+                    currentView.visibility = View.GONE
+                    currentView.translationX = 0f
+                    currentView.alpha = 1f
+                }
+                .start()
+
+            targetView.animate()
+                .translationX(0f)
+                .alpha(1f)
+                .setDuration(TAB_TRANSITION_DURATION_MS)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withEndAction {
+                    currentTabIndex = dragTargetTabIndex
+                    updateHeaderSelection(currentTabIndex)
+                }
+                .start()
+        } else {
+            currentView.animate()
+                .translationX(0f)
+                .alpha(1f)
+                .setDuration(TAB_TRANSITION_DURATION_MS)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .start()
+
+            val resetX = if (direction > 0) width.toFloat() else -width.toFloat()
+            targetView.animate()
+                .translationX(resetX)
+                .alpha(0.86f)
+                .setDuration(TAB_TRANSITION_DURATION_MS)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .withEndAction {
+                    targetView.visibility = View.GONE
+                    targetView.translationX = 0f
+                    targetView.alpha = 1f
+                    updateHeaderSelection(currentTabIndex)
+                }
+                .start()
+        }
+    }
+
+    private fun resetDragPagingState() {
+        velocityTracker?.recycle()
+        velocityTracker = null
+        dragTargetTabIndex = -1
+        isHorizontalDragPaging = false
+        allowSwipeForCurrentTouch = true
+    }
+
+    private fun isTouchInsideTabContainer(event: MotionEvent): Boolean {
+        val location = IntArray(2)
+        tabContainer.getLocationOnScreen(location)
+        val x = event.rawX
+        val y = event.rawY
+        return x >= location[0] &&
+            x <= location[0] + tabContainer.width &&
+            y >= location[1] &&
+            y <= location[1] + tabContainer.height
+    }
+
+    private fun isSwipeAllowedForTouchStart(event: MotionEvent): Boolean {
+        val activeSection = tabSections.getOrNull(currentTabIndex) ?: return true
+        val targetView = findDeepestTouchedView(activeSection, event.rawX, event.rawY)
+        if (targetView == null) return true
+        return !isInteractiveControl(targetView)
+    }
+
+    private fun findDeepestTouchedView(root: View, rawX: Float, rawY: Float): View? {
+        val location = IntArray(2)
+        root.getLocationOnScreen(location)
+        val insideRoot = rawX >= location[0] &&
+            rawX <= location[0] + root.width &&
+            rawY >= location[1] &&
+            rawY <= location[1] + root.height
+        if (!insideRoot) return null
+        if (root !is ViewGroup) return root
+
+        for (index in root.childCount - 1 downTo 0) {
+            val child = root.getChildAt(index)
+            if (child.visibility != View.VISIBLE || child.alpha <= 0f) continue
+            val found = findDeepestTouchedView(child, rawX, rawY)
+            if (found != null) return found
+        }
+        return root
+    }
+
+    private fun isInteractiveControl(view: View): Boolean {
+        return view is Button ||
+            view is EditText ||
+            view is SeekBar ||
+            view is SwitchMaterial ||
+            view is ScrollView ||
+            view is HorizontalScrollView ||
+            view.isClickable ||
+            view.isLongClickable ||
+            view.isFocusable
     }
 
     private fun updateSystemGestureExclusionRects() {
@@ -545,40 +813,6 @@ class MainActivity : AppCompatActivity() {
                 Rect(0, 0, scroller.width, scroller.height)
             )
         }
-    }
-
-    private class TabSectionPagerAdapter(
-        private val sections: List<View>
-    ) : RecyclerView.Adapter<TabSectionPagerAdapter.TabSectionViewHolder>() {
-
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): TabSectionViewHolder {
-            val container = FrameLayout(parent.context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            }
-            return TabSectionViewHolder(container)
-        }
-
-        override fun onBindViewHolder(holder: TabSectionViewHolder, position: Int) {
-            val section = sections[position]
-            holder.container.removeAllViews()
-            (section.parent as? ViewGroup)?.removeView(section)
-            section.visibility = View.VISIBLE
-            section.translationX = 0f
-            section.alpha = 1f
-            holder.container.addView(section)
-        }
-
-        override fun getItemCount(): Int = sections.size
-
-        override fun onViewRecycled(holder: TabSectionViewHolder) {
-            holder.container.removeAllViews()
-            super.onViewRecycled(holder)
-        }
-
-        class TabSectionViewHolder(val container: FrameLayout) : RecyclerView.ViewHolder(container)
     }
 
     private fun bindUiListeners() {
@@ -1711,10 +1945,6 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         runningTerminalCommand?.stop()
         runningTerminalCommand = null
-        if (::tabPager.isInitialized) {
-            tabPagerCallback?.let { tabPager.unregisterOnPageChangeCallback(it) }
-        }
-        tabPagerCallback = null
         voiceService.shutdown()
         super.onDestroy()
     }
