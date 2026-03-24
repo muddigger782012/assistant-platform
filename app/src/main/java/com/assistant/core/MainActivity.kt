@@ -32,11 +32,13 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.text.InputType
 import android.widget.SeekBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
@@ -943,6 +945,10 @@ class MainActivity : AppCompatActivity() {
             setUpdateStatus("Update is already in progress.")
             return
         }
+        if (BuildConfig.GITHUB_UPDATE_TOKEN_REQUIRED && getGithubUpdateToken().isBlank()) {
+            promptForGithubTokenAndRetryUpdate()
+            return
+        }
         updateInProgress = true
         autoUpgradeButton.isEnabled = false
         setUpdateStatus("Downloading latest build...")
@@ -958,8 +964,8 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (error: Throwable) {
                 runOnUiThread {
-                    setUpdateStatus("Direct update unavailable. Opening browser download fallback...")
-                    openBrowserUpdateFallback()
+                    val detail = error.message ?: "unknown download error"
+                    setUpdateStatus("Update failed: $detail")
                 }
             } finally {
                 runOnUiThread {
@@ -972,8 +978,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun downloadLatestApk(targetFile: File): String {
         val failures = mutableListOf<String>()
-        for (url in UPDATE_URL_CANDIDATES) {
-            val result = runCatching { downloadLatestApkFromUrl(url, targetFile) }
+        for (url in buildUpdateUrlCandidates()) {
+            val result = runCatching { downloadLatestApkFromUrl(url, targetFile, getGithubUpdateToken()) }
             if (result.isSuccess) {
                 return url
             }
@@ -982,7 +988,7 @@ class MainActivity : AppCompatActivity() {
         throw IllegalStateException(failures.firstOrNull() ?: "No updater URL candidates available.")
     }
 
-    private fun downloadLatestApkFromUrl(url: String, targetFile: File) {
+    private fun downloadLatestApkFromUrl(url: String, targetFile: File, githubToken: String) {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 22000
             readTimeout = 70000
@@ -991,6 +997,9 @@ class MainActivity : AppCompatActivity() {
             instanceFollowRedirects = true
             setRequestProperty("User-Agent", "JARVIS-Updater/2.3")
             setRequestProperty("Accept", "application/vnd.android.package-archive,application/octet-stream,*/*")
+            if (githubToken.isNotBlank()) {
+                setRequestProperty("Authorization", "token $githubToken")
+            }
             connect()
         }
         try {
@@ -1026,6 +1035,63 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun buildUpdateUrlCandidates(): List<String> {
+        val owner = BuildConfig.GITHUB_REPO_OWNER.trim().ifEmpty { "muddigger782012" }
+        val repo = BuildConfig.GITHUB_REPO_NAME.trim().ifEmpty { "assistant-platform" }
+        val branch = BuildConfig.GITHUB_UPDATE_BRANCH.trim().ifEmpty { "main" }
+        val encodedBranch = Uri.encode(branch)
+        val apiBranch = Uri.encode(branch, "@#&=*+-_.,:!?()/~'%")
+
+        return listOf(
+            "https://raw.githubusercontent.com/$owner/$repo/$branch/artifacts/app-debug.apk",
+            "https://raw.githubusercontent.com/$owner/$repo/$encodedBranch/artifacts/app-debug.apk",
+            "https://raw.githubusercontent.com/$owner/$repo/refs/heads/$branch/artifacts/app-debug.apk",
+            "https://api.github.com/repos/$owner/$repo/contents/artifacts/app-debug.apk?ref=$apiBranch",
+            "https://github.com/$owner/$repo/raw/refs/heads/$branch/artifacts/app-debug.apk",
+            "https://github.com/$owner/$repo/raw/$branch/artifacts/app-debug.apk"
+        ).distinct()
+    }
+
+    private fun promptForGithubTokenAndRetryUpdate() {
+        val tokenInput = EditText(this).apply {
+            hint = "GitHub Personal Access Token"
+            inputType = InputType.TYPE_CLASS_TEXT or
+                InputType.TYPE_TEXT_VARIATION_PASSWORD or
+                InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setText(getGithubUpdateToken())
+            setSelection(text?.length ?: 0)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("GitHub Token Required")
+            .setMessage(
+                "This repository is private. Enter a GitHub token with repository read access to enable automatic in-app updates."
+            )
+            .setView(tokenInput)
+            .setCancelable(true)
+            .setNegativeButton("Cancel") { _, _ ->
+                setUpdateStatus("Update cancelled. Token required for private-repo auto-update.")
+            }
+            .setPositiveButton("Save & Update") { _, _ ->
+                val token = tokenInput.text?.toString()?.trim().orEmpty()
+                if (token.isBlank()) {
+                    setUpdateStatus("Token is empty. Update not started.")
+                } else {
+                    saveGithubUpdateToken(token)
+                    setUpdateStatus("Token saved. Starting automatic update...")
+                    startAppUpgradeFlow()
+                }
+            }
+            .show()
+    }
+
+    private fun getGithubUpdateToken(): String {
+        return uiPreferences.getString(KEY_GITHUB_UPDATE_TOKEN, "").orEmpty()
+    }
+
+    private fun saveGithubUpdateToken(token: String) {
+        uiPreferences.edit().putString(KEY_GITHUB_UPDATE_TOKEN, token).apply()
+    }
+
     private fun isLikelyApkZip(file: File): Boolean {
         if (!file.exists() || file.length() < 4) return false
         return try {
@@ -1036,18 +1102,6 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (_: Throwable) {
             false
-        }
-    }
-
-    private fun openBrowserUpdateFallback() {
-        val fallback = Intent(Intent.ACTION_VIEW, Uri.parse(BROWSER_UPDATE_URL)).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        try {
-            startActivity(fallback)
-            setUpdateStatus("Browser opened for authenticated update download.")
-        } catch (error: Throwable) {
-            setUpdateStatus("Update failed: ${error.message ?: "could not open browser fallback"}")
         }
     }
 
@@ -1814,18 +1868,11 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val KEY_PROMPTED_MIC_PERMISSION = "prompted_mic_permission"
+        private const val KEY_GITHUB_UPDATE_TOKEN = "github_update_token"
         private const val SHIZUKU_PERMISSION_REQUEST_CODE = 9567
         private const val TAB_TRANSITION_DURATION_MS = 220L
         private const val SWIPE_VELOCITY_THRESHOLD = 900f
         private const val MIN_VALID_APK_BYTES = 250_000L
-        private val UPDATE_URL_CANDIDATES = listOf(
-            "https://raw.githubusercontent.com/muddigger782012/assistant-platform/cursor%2Fcursor-build-pack-project-8400/artifacts/app-debug.apk",
-            "https://raw.githubusercontent.com/muddigger782012/assistant-platform/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk",
-            "https://github.com/muddigger782012/assistant-platform/raw/refs/heads/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk",
-            "https://github.com/muddigger782012/assistant-platform/raw/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk"
-        )
-        private const val BROWSER_UPDATE_URL =
-            "https://github.com/muddigger782012/assistant-platform/blob/cursor/cursor-build-pack-project-8400/artifacts/app-debug.apk?raw=1"
     }
 
     private data class TabBinding(
