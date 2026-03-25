@@ -6,6 +6,7 @@
     android:background="@drawable/bg_jarvis_space"
     android:orientation="vertical">
 
+    <!-- Top app identity/header panel -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -48,6 +49,7 @@
         </LinearLayout>
     </LinearLayout>
 
+    <!-- Header tab strip (horizontal, scrollable) -->
     <HorizontalScrollView
         android:id="@+id/headerTabScroller"
         android:layout_width="match_parent"
@@ -126,6 +128,7 @@
         </LinearLayout>
     </HorizontalScrollView>
 
+    <!-- Main tab content container -->
     <FrameLayout
         android:id="@+id/tabContainer"
         android:layout_width="match_parent"
@@ -133,6 +136,7 @@
         android:padding="8dp"
         android:layout_weight="1">
 
+        <!-- Assistant tab -->
         <ScrollView
             android:id="@+id/tabAssistantSection"
             android:layout_width="match_parent"
@@ -187,6 +191,7 @@
             </LinearLayout>
         </ScrollView>
 
+        <!-- Project tab -->
         <ScrollView
             android:id="@+id/tabProjectSection"
             android:layout_width="match_parent"
@@ -214,6 +219,7 @@
             </LinearLayout>
         </ScrollView>
 
+        <!-- Shizuku tab -->
         <ScrollView
             android:id="@+id/tabShizukuSection"
             android:layout_width="match_parent"
@@ -282,6 +288,7 @@
             </LinearLayout>
         </ScrollView>
 
+        <!-- Status tab -->
         <ScrollView
             android:id="@+id/tabStatusSection"
             android:layout_width="match_parent"
@@ -333,6 +340,7 @@
             </LinearLayout>
         </ScrollView>
 
+        <!-- Terminal tab -->
         <ScrollView
             android:id="@+id/tabTerminalSection"
             android:layout_width="match_parent"
@@ -418,6 +426,7 @@
             </LinearLayout>
         </ScrollView>
 
+        <!-- Audit tab -->
         <ScrollView
             android:id="@+id/tabAuditSection"
             android:layout_width="match_parent"
@@ -505,6 +514,7 @@
             </LinearLayout>
         </ScrollView>
 
+        <!-- Voice tab -->
         <ScrollView
             android:id="@+id/tabVoiceSection"
             android:layout_width="match_parent"
@@ -555,6 +565,7 @@
             </LinearLayout>
         </ScrollView>
 
+        <!-- Permissions tab -->
         <ScrollView
             android:id="@+id/tabPermissionsSection"
             android:layout_width="match_parent"
@@ -649,6 +660,7 @@
             </LinearLayout>
         </ScrollView>
 
+        <!-- Dhizuku / Device Owner tab -->
         <ScrollView
             android:id="@+id/tabDhizukuSection"
             android:layout_width="match_parent"
@@ -823,6 +835,7 @@
             </LinearLayout>
         </ScrollView>
 
+        <!-- HUD visual overlays -->
         <View
             android:id="@+id/vHudPulseOverlay"
             android:layout_width="match_parent"
