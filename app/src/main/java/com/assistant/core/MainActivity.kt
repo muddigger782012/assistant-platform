@@ -59,6 +59,7 @@ import com.assistant.core.services.DhizukuStatus
 import com.assistant.core.services.FileService
 import com.assistant.core.services.HybridAssistantService
 import com.assistant.core.services.LocalVoiceCommand
+import com.assistant.core.services.ParsedVoiceCommand
 import com.assistant.core.services.PrivilegeCatalogService
 import com.assistant.core.services.RunningShizukuCommand
 import com.assistant.core.services.ShizukuShellService
@@ -100,6 +101,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var auditDebugOutput: TextView
     private lateinit var micPermissionStatusView: TextView
     private lateinit var grantMicPermissionButton: Button
+    private lateinit var voiceGlossaryToggleButton: Button
+    private lateinit var voiceGlossaryContentView: TextView
     private lateinit var privilegeCenterView: TextView
     private lateinit var refreshPrivilegesButton: Button
     private lateinit var requestDhizukuPermissionButton: Button
@@ -178,6 +181,7 @@ class MainActivity : AppCompatActivity() {
     private var runningTerminalCommand: RunningShizukuCommand? = null
     private var updateInProgress = false
     private var currentTabIndex = 0
+    private var voiceGlossaryExpanded = false
     private var headerSelectionAnimator: ValueAnimator? = null
     private var pulseAnimator: ObjectAnimator? = null
     private var scanlineAnimator: ObjectAnimator? = null
@@ -385,6 +389,8 @@ class MainActivity : AppCompatActivity() {
         scanlineView = findViewById(R.id.vScanline)
         micPermissionStatusView = findViewById(R.id.tvMicPermissionStatus)
         grantMicPermissionButton = findViewById(R.id.btnGrantMicPermission)
+        voiceGlossaryToggleButton = findViewById(R.id.btnVoiceCommandGlossary)
+        voiceGlossaryContentView = findViewById(R.id.tvVoiceCommandGlossaryContent)
         privilegeCenterView = findViewById(R.id.tvPrivilegeCenter)
         refreshPrivilegesButton = findViewById(R.id.btnRefreshPrivileges)
         requestDhizukuPermissionButton = findViewById(R.id.btnRequestDhizukuPermission)
@@ -714,6 +720,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         settingsButton.setOnClickListener { openVoiceSettings() }
+        voiceGlossaryToggleButton.setOnClickListener { toggleVoiceGlossary() }
 
         grantMicPermissionButton.setOnClickListener {
             shouldStartVoiceAfterPermission = false
@@ -1374,6 +1381,7 @@ class MainActivity : AppCompatActivity() {
                 )
             )
         }
+        renderVoiceGlossary()
         refreshVoiceButtonLabel()
         if (currentVoiceConfig.useForegroundServiceMode) {
             if (currentVoiceConfig.autoStartForegroundService && !voicePreferences.isForegroundServiceRunning()) {
@@ -1392,6 +1400,95 @@ class MainActivity : AppCompatActivity() {
         } else {
             if (voiceEnabled) getString(R.string.stop_voice_hotword) else getString(R.string.start_voice_hotword)
         }
+    }
+
+    private fun toggleVoiceGlossary() {
+        voiceGlossaryExpanded = !voiceGlossaryExpanded
+        updateVoiceGlossaryUi()
+    }
+
+    private fun updateVoiceGlossaryUi() {
+        voiceGlossaryContentView.visibility = if (voiceGlossaryExpanded) View.VISIBLE else View.GONE
+        val labelRes = if (voiceGlossaryExpanded) {
+            R.string.voice_command_glossary_collapse
+        } else {
+            R.string.voice_command_glossary_expand
+        }
+        voiceGlossaryToggleButton.text = getString(labelRes)
+    }
+
+    private fun renderVoiceGlossary() {
+        if (!::currentVoiceConfig.isInitialized) return
+        voiceGlossaryContentView.text = buildVoiceGlossaryText(currentVoiceConfig)
+        updateVoiceGlossaryUi()
+    }
+
+    private fun buildVoiceGlossaryText(config: VoiceConfig): String {
+        val sections = listOf(
+            glossarySection(
+                title = "Create Project",
+                description = "Creates a new project folder/workflow using your configured default name unless you say 'named <project>'.",
+                phrases = phrasesFor(config.customProjectPhrases, listOf("create project", "new project", "generate project", "make project"))
+            ),
+            glossarySection(
+                title = "Show Status",
+                description = "Reports current capability and system status.",
+                phrases = phrasesFor(config.customStatusPhrases, listOf("status", "capability", "what can you do", "show system status"))
+            ),
+            glossarySection(
+                title = "Run Shell Command",
+                description = "Runs a shell command through the assistant command pipeline. Example: 'run shell id'.",
+                phrases = phrasesFor(config.customShellPhrases, listOf("run shell", "execute command", "run command"))
+            ),
+            glossarySection(
+                title = "Reboot Device",
+                description = "Requests a reboot action. Add confirmation phrase to execute immediately (for example: 'reboot now').",
+                phrases = phrasesFor(config.customRebootPhrases, listOf("reboot", "restart device", "restart phone"))
+            ),
+            glossarySection(
+                title = "Open Voice Settings",
+                description = "Opens the dedicated voice settings screen.",
+                phrases = phrasesFor(config.customSettingsPhrases, listOf("open voice settings", "voice settings", "configure voice"))
+            ),
+            glossarySection(
+                title = "Start Voice Mode",
+                description = "Enables voice listening mode.",
+                phrases = phrasesFor(config.customStartVoicePhrases, listOf("start listening", "enable voice", "wake up"))
+            ),
+            glossarySection(
+                title = "Stop Voice Mode",
+                description = "Stops voice listening mode.",
+                phrases = phrasesFor(config.customStopVoicePhrases, listOf("stop listening", "stop voice", "go silent", "disable voice"))
+            ),
+            glossarySection(
+                title = "Fallback Natural-Language Command",
+                description = "Any phrase not matching the above patterns is routed to the hybrid assistant intent/classifier pipeline.",
+                phrases = listOf("free-form request")
+            )
+        )
+        return sections.joinToString(separator = "\n\n")
+    }
+
+    private fun glossarySection(title: String, description: String, phrases: List<String>): String {
+        val sample = phrases.joinToString(separator = ", ")
+        return buildString {
+            appendLine("• $title")
+            appendLine("  Action: $description")
+            append("  Triggers: $sample")
+        }
+    }
+
+    private fun phrasesFor(customCsv: String, defaults: List<String>): List<String> {
+        val custom = customCsv.split(",")
+            .map { normalizeGlossaryPhrase(it) }
+            .filter { it.isNotBlank() }
+        return (defaults + custom).distinct()
+    }
+
+    private fun normalizeGlossaryPhrase(value: String): String {
+        return value.trim()
+            .lowercase(Locale.getDefault())
+            .replace(Regex("\\s+"), " ")
     }
 
     private fun hasMicrophonePermission(): Boolean {

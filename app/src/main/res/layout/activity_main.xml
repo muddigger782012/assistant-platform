@@ -562,6 +562,24 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:text="@string/voice_settings_title" />
+
+                <Button
+                    android:id="@+id/btnVoiceCommandGlossary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/voice_command_glossary_expand" />
+
+                <TextView
+                    android:id="@+id/tvVoiceCommandGlossaryContent"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/glass_output_surface"
+                    android:padding="8dp"
+                    android:textIsSelectable="true"
+                    android:textSize="12sp"
+                    android:visibility="gone" />
             </LinearLayout>
         </ScrollView>
 

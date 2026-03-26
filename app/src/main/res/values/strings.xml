@@ -45,6 +45,9 @@
     <string name="custom_stop_voice_phrases_label">Custom stop-voice triggers (comma-separated)</string>
     <string name="custom_phrases_hint">example one, example two</string>
     <string name="voice_controls_title">Voice Controls</string>
+    <string name="voice_command_glossary_title">Voice Command Glossary</string>
+    <string name="voice_command_glossary_expand">Show available voice commands</string>
+    <string name="voice_command_glossary_collapse">Hide voice command glossary</string>
     <string name="grant_microphone_permission">Grant Microphone Permission</string>
     <string name="mic_permission_status_ok">Microphone permission: granted</string>
     <string name="mic_permission_status_missing">Microphone permission: not granted</string>
