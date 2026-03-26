@@ -31,10 +31,7 @@ import android.view.animation.LinearInterpolator
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.text.InputType
-import android.widget.SeekBar
-import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -181,7 +178,6 @@ class MainActivity : AppCompatActivity() {
     private var runningTerminalCommand: RunningShizukuCommand? = null
     private var updateInProgress = false
     private var currentTabIndex = 0
-    private var allowSwipeForCurrentTouch = true
     private var headerSelectionAnimator: ValueAnimator? = null
     private var pulseAnimator: ObjectAnimator? = null
     private var scanlineAnimator: ObjectAnimator? = null
@@ -586,10 +582,7 @@ class MainActivity : AppCompatActivity() {
     private fun bindSwipeNavigation() {
         val swipeDistanceThreshold = 64f * resources.displayMetrics.density
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: MotionEvent): Boolean {
-                allowSwipeForCurrentTouch = isSwipeAllowedForTouchStart(e)
-                return true
-            }
+            override fun onDown(e: MotionEvent): Boolean = true
 
             override fun onFling(
                 e1: MotionEvent?,
@@ -597,7 +590,7 @@ class MainActivity : AppCompatActivity() {
                 velocityX: Float,
                 velocityY: Float
             ): Boolean {
-                if (!allowSwipeForCurrentTouch || e1 == null) return false
+                if (e1 == null) return false
                 val dx = e2.rawX - e1.rawX
                 val dy = e2.rawY - e1.rawY
                 val horizontalIntent = kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.2f
@@ -625,44 +618,6 @@ class MainActivity : AppCompatActivity() {
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         // Keep this stable: do not globally intercept touch dispatch.
         return super.dispatchTouchEvent(event)
-    }
-
-    private fun isSwipeAllowedForTouchStart(event: MotionEvent): Boolean {
-        val activeSection = tabSections.getOrNull(currentTabIndex) ?: return true
-        val targetView = findDeepestTouchedView(activeSection, event.rawX, event.rawY)
-        if (targetView == null) return true
-        return !isInteractiveControl(targetView)
-    }
-
-    private fun findDeepestTouchedView(root: View, rawX: Float, rawY: Float): View? {
-        val location = IntArray(2)
-        root.getLocationOnScreen(location)
-        val insideRoot = rawX >= location[0] &&
-            rawX <= location[0] + root.width &&
-            rawY >= location[1] &&
-            rawY <= location[1] + root.height
-        if (!insideRoot) return null
-        if (root !is ViewGroup) return root
-
-        for (index in root.childCount - 1 downTo 0) {
-            val child = root.getChildAt(index)
-            if (child.visibility != View.VISIBLE || child.alpha <= 0f) continue
-            val found = findDeepestTouchedView(child, rawX, rawY)
-            if (found != null) return found
-        }
-        return root
-    }
-
-    private fun isInteractiveControl(view: View): Boolean {
-        return view is Button ||
-            view is EditText ||
-            view is SeekBar ||
-            view is SwitchMaterial ||
-            view is ScrollView ||
-            view is HorizontalScrollView ||
-            view.isClickable ||
-            view.isLongClickable ||
-            view.isFocusable
     }
 
     private fun updateSystemGestureExclusionRects() {
